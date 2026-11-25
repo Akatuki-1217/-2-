@@ -2,7 +2,7 @@
  * growth.js — 経験値・Lvアップ・スキル獲得の判定（DOM非依存）
  * 数値はすべて引数の data（data.js の DATA）から読む。
  *
- * キャラクター: { name, level, exp, sp, base:{hp,mp,...}, hp, mp, skills:[skillId...] }
+ * キャラクター: { name, level, exp, sp, base:{hp,mp,...}, hp, mp, skills:[skillId...], cleared:[encounterId...] }
  *   base はLvアップで伸びる素の能力値。パッシブ込みの値は getEffectiveStats で求める。
  *   hp / mp は現在値。
  */
@@ -56,6 +56,7 @@
       hp: 0,
       mp: 0,
       skills: (p.initialSkills || []).slice(),
+      cleared: [], // クリアした出撃先のID
     };
     fullHeal(ch, data); // 開始時はHP・MP満タン
     return ch;
@@ -89,7 +90,7 @@
   }
 
   // 戦闘で「行動」になる種類（パッシブは常時発動なので行動にならない）
-  const ACTION_TYPES = ['active', 'magic'];
+  const ACTION_TYPES = ['active', 'magic', 'heal'];
 
   /**
    * 行動ID（'attack' または data.skills のキー）を戦闘用の行動に変換する。
@@ -196,6 +197,30 @@
     return { lostExp: lostExp };
   }
 
+  // ---- 出撃先 ----
+
+  function findEncounter(id, data) {
+    return data.encounters.find(function (e) { return e.id === id; }) || null;
+  }
+
+  /** 出撃先の状態：'cleared'（クリア済み） / 'open'（行ける） / 'locked'（まだ行けない） */
+  function getEncounterState(ch, enc) {
+    if (ch.cleared.indexOf(enc.id) >= 0) return 'cleared';
+    if (enc.requires && ch.cleared.indexOf(enc.requires) < 0) return 'locked';
+    return 'open';
+  }
+
+  /**
+   * 出撃先をクリアしたことを記録する。
+   * 返り値: { firstClear, unlocked:[新しく行けるようになった出撃先] }
+   */
+  function markCleared(ch, encId, data) {
+    if (ch.cleared.indexOf(encId) >= 0) return { firstClear: false, unlocked: [] };
+    ch.cleared.push(encId);
+    const unlocked = data.encounters.filter(function (e) { return e.requires === encId; });
+    return { firstClear: true, unlocked: unlocked };
+  }
+
   // ---- スキルツリー ----
 
   const MESSAGES = {
@@ -286,6 +311,17 @@
       });
     });
 
+    const encIds = (data.encounters || []).map(function (e) { return e.id; });
+    (data.encounters || []).forEach(function (enc) {
+      if (!enc.enemies || enc.enemies.length === 0) warnings.push('出撃先「' + enc.name + '」: 敵がいません');
+      (enc.enemies || []).forEach(function (id) {
+        if (!data.enemies[id]) warnings.push('出撃先「' + enc.name + '」: 敵 ' + id + ' がありません');
+      });
+      if (enc.requires && encIds.indexOf(enc.requires) < 0) {
+        warnings.push('出撃先「' + enc.name + '」: 解放条件 ' + enc.requires + ' がありません');
+      }
+    });
+
     Object.keys(data.enemies).forEach(function (id) {
       const e = data.enemies[id];
       (e.actions || []).forEach(function (a) {
@@ -314,6 +350,9 @@
     grantReward: grantReward,
     sumRewards: sumRewards,
     applyDefeat: applyDefeat,
+    findEncounter: findEncounter,
+    getEncounterState: getEncounterState,
+    markCleared: markCleared,
     findNode: findNode,
     checkAcquire: checkAcquire,
     acquireSkill: acquireSkill,

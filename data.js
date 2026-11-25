@@ -27,7 +27,12 @@
       initialSkills: ['fire'], // 魔法コマンドが空にならないよう最初から持っている
     },
 
-    // 敵
+    /*
+     * 敵
+     *  actions: 使う行動（'attack' か skills のキー）。上から順に優先して試す。
+     *           回復は味方のHPが battle.aiHealBelow 未満のときだけ使う。
+     *           使える行動が1つもない手番は「様子を見る」になる。
+     */
     enemies: {
       soldier: {
         name: '試験兵',
@@ -36,12 +41,52 @@
         actions: ['attack'], // 通常攻撃のみ
         reward: { exp: 10, sp: 1 },
       },
+      scout: {
+        name: '斥候兵',
+        // 打たれ弱いが速い。2体同時に出る
+        stats: { hp: 18, mp: 0, atk: 9, def: 2, matk: 0, mdef: 1, spd: 7 },
+        actions: ['attack'],
+        reward: { exp: 7, sp: 1 },
+      },
+      archer: {
+        name: '見張りの弓兵',
+        // 狙い撃ち（クールタイム1）しか持たないので、撃った次の手番は様子を見る
+        stats: { hp: 24, mp: 30, atk: 11, def: 3, matk: 0, mdef: 2, spd: 4 },
+        actions: ['aimed_shot'],
+        reward: { exp: 9, sp: 1 },
+      },
+      acolyte: {
+        name: '見習い僧',
+        // 仲間のHPが減ると癒しの光で回復する。先に倒すと楽になる
+        stats: { hp: 20, mp: 20, atk: 7, def: 2, matk: 8, mdef: 5, spd: 3 },
+        actions: ['healing_light', 'attack'],
+        reward: { exp: 8, sp: 1 },
+      },
+      captain: {
+        name: '砦の隊長',
+        // 兜割り（クールタイム2）と通常攻撃を交互に使う
+        stats: { hp: 56, mp: 24, atk: 13, def: 6, matk: 0, mdef: 3, spd: 5 },
+        actions: ['helm_splitter', 'attack'],
+        reward: { exp: 24, sp: 2 },
+      },
     },
+
+    /*
+     * 出撃先
+     *  enemies: 出てくる敵（同じ敵を並べると複数体） / requires: このステージをクリアすると解放
+     *  recommendedLv: 目安のLv（表示のみ）
+     */
+    encounters: [
+      { id: 'training', name: '訓練場', enemies: ['soldier'], recommendedLv: 1, requires: null },
+      { id: 'woods', name: '森の小道', enemies: ['scout', 'scout'], recommendedLv: 2, requires: 'training' },
+      { id: 'tower', name: '見張り塔', enemies: ['archer', 'acolyte'], recommendedLv: 3, requires: 'woods' },
+      { id: 'fort', name: '古い砦', enemies: ['acolyte', 'captain'], recommendedLv: 4, requires: 'tower' },
+    ],
 
     // 戦闘の設定
     battle: {
-      enemyId: 'soldier', // 出撃時に戦う敵
       tieFirstSide: 'ally', // 素早さが同じときに先に動く側（暫定：自キャラが先）
+      aiHealBelow: 0.6, // 自動行動のユニットは、HPがこの割合未満の味方がいると回復を使う
     },
 
     // 通常攻撃（威力倍率1.0）
@@ -49,7 +94,8 @@
 
     /*
      * 魔法・スキル
-     *  type: 'active'（物理・攻撃力を使う） / 'magic'（魔法攻撃力を使う） / 'passive'（常時発動）
+     *  type: 'active'（物理・攻撃力を使う） / 'magic'（魔法攻撃力を使う）
+     *        / 'heal'（味方のHPを「魔法攻撃力 × 威力倍率」回復） / 'passive'（常時発動）
      *  power: 威力倍率 / mpCost: MP消費 / cooldown: クールタイム / sp: 必要SP / bonus: パッシブの上昇量
      */
     skills: {
@@ -59,6 +105,11 @@
       flame: { name: 'フレイム', type: 'magic', rank: 'C', power: 1.6, mpCost: 7, cooldown: 0, sp: 2 },
       strength: { name: '腕力', type: 'passive', rank: 'D', bonus: { atk: 2 }, sp: 1 },
       vitality: { name: '体力', type: 'passive', rank: 'C', bonus: { hp: 4 }, sp: 2 },
+      healing_light: { name: '癒しの光', type: 'heal', rank: 'D', power: 1.4, mpCost: 5, cooldown: 0, sp: 1 },
+      spring_of_life: { name: '命の泉', type: 'heal', rank: 'C', power: 1.8, mpCost: 8, cooldown: 0, sp: 2 },
+      // 敵が使う技（スキルツリーには無い）
+      aimed_shot: { name: '狙い撃ち', type: 'active', rank: 'C', power: 1.5, mpCost: 6, cooldown: 1, sp: 2 },
+      helm_splitter: { name: '兜割り', type: 'active', rank: 'C', power: 1.6, mpCost: 6, cooldown: 2, sp: 2 },
     },
 
     // スキルツリー（前のスキルは1つだけ。requires: null は1段目）
@@ -82,6 +133,13 @@
         nodes: [
           { skill: 'strength', requires: null },
           { skill: 'vitality', requires: 'strength' },
+        ],
+      },
+      {
+        name: '癒し',
+        nodes: [
+          { skill: 'healing_light', requires: null },
+          { skill: 'spring_of_life', requires: 'healing_light' },
         ],
       },
     ],

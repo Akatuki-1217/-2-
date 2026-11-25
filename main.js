@@ -17,6 +17,8 @@
     units: [], // 戦闘に出ているユニット（味方・敵）
     player: null,
     enemyIds: [], // 今の戦闘の敵（data.js の enemies のキー）
+    encounterId: null, // 今の出撃先
+    sortieIndex: 0, // 出撃先の一覧で選んでいる行
     battleToken: 0,
     busy: false, // true の間は戦闘の入力を受け付けない（二重入力防止）
     listMode: null, // 'magic' | 'skill' | null
@@ -43,6 +45,65 @@
     game.screen = 'base';
     UI.renderBase(game.ch, eff(), G.expToNext(game.ch.level, D.growth));
     UI.showScreen('base');
+  }
+
+  function sortieItems() {
+    return D.encounters.map(function (enc) {
+      const req = enc.requires && G.findEncounter(enc.requires, D);
+      return {
+        name: enc.name,
+        recommendedLv: enc.recommendedLv,
+        enemiesText: enemiesText(enc.enemies),
+        state: G.getEncounterState(game.ch, enc),
+        lockText: req ? '「' + req.name + '」をクリアすると解放' : '',
+      };
+    });
+  }
+
+  /** 敵の並びを「斥候兵 ×2・見習い僧」のような文字にする */
+  function enemiesText(ids) {
+    const order = [];
+    const count = {};
+    ids.forEach(function (id) {
+      if (!count[id]) order.push(id);
+      count[id] = (count[id] || 0) + 1;
+    });
+    return order.map(function (id) { return D.enemies[id].name + (count[id] > 1 ? ' ×' + count[id] : ''); }).join('・');
+  }
+
+  function goSortie() {
+    game.screen = 'sortie';
+    // 最初は「まだクリアしていない、行ける出撃先」のうち一番上を選んでおく
+    const items = sortieItems();
+    const next = items.findIndex(function (it) { return it.state === 'open'; });
+    game.sortieIndex = next >= 0 ? next : 0;
+    renderSortie();
+    UI.showScreen('sortie');
+  }
+
+  function renderSortie() {
+    UI.renderSortie(sortieItems(), game.sortieIndex, game.ch.level);
+  }
+
+  function moveSortie(delta) {
+    const n = D.encounters.length;
+    game.sortieIndex = (game.sortieIndex + delta + n) % n;
+    renderSortie();
+  }
+
+  function chooseSortie(index) {
+    const enc = D.encounters[index];
+    if (!enc || game.screen !== 'sortie') return;
+    if (G.getEncounterState(game.ch, enc) === 'locked') {
+      UI.toast(sortieItems()[index].lockText, D.timing.toast);
+      return;
+    }
+    startEncounter(enc);
+  }
+
+  function startEncounter(enc) {
+    game.encounterId = enc.id;
+    startBattle(enc.enemies);
   }
 
   function goBook() {
@@ -104,7 +165,7 @@
       actions: G.getBattleActions(ch, D),
     });
     game.units = [game.player].concat(createEnemyUnits(enemyIds));
-    game.battle = B.createBattle(game.units, { tieFirstSide: D.battle.tieFirstSide });
+    game.battle = B.createBattle(game.units, { tieFirstSide: D.battle.tieFirstSide, healBelow: D.battle.aiHealBelow });
     game.battleToken += 1;
     game.busy = true;
     game.listMode = null;
@@ -165,6 +226,13 @@
     }
     const target = game.battle.getUnit(r.targetId);
     UI.log(actor.name + (r.actionType === 'attack' ? 'の攻撃！' : 'の' + r.actionName + '！'));
+    if (r.actionType === 'heal') {
+      renderUnits();
+      return UI.wait(D.timing.hitAnimation).then(function () {
+        if (r.heal > 0) UI.log(target.name + 'のHPが' + r.heal + '回復した！');
+        else UI.log('しかし何も起きなかった', 'miss');
+      });
+    }
     if (r.effective) UI.playHit(target.id);
     renderUnits();
     return UI.wait(D.timing.hitAnimation).then(function () {
@@ -184,10 +252,13 @@
 
   /**
    * 行動を選んだ。相手が1体ならそのまま実行し、複数なら攻撃先を選ぶ。
+   * 回復は味方に使う（今は自キャラだけなので自分に使う）。
    */
   function chooseAction(action) {
     if (!canInput() || !action || !B.canUseAction(game.player, action).ok) return;
-    const targets = aliveEnemies();
+    const targets = B.isOffensive(action)
+      ? aliveEnemies()
+      : game.units.filter(function (u) { return u.side === game.player.side && u.hp > 0; });
     if (targets.length === 1) return playerAct(action, targets[0]);
     startTargeting(action, targets);
   }
@@ -219,7 +290,15 @@
 
     if (game.battle.state.winner === 'ally') {
       UI.vanishSide('enemy'); // 敵が消える
-      game.lastResult = G.grantReward(ch, G.sumRewards(game.enemyIds, D), D);
+      const res = G.grantReward(ch, G.sumRewards(game.enemyIds, D), D);
+      const enc = G.findEncounter(game.encounterId, D);
+      if (enc) {
+        const c = G.markCleared(ch, enc.id, D);
+        res.firstClear = c.firstClear;
+        res.unlocked = c.unlocked;
+        res.encounterName = enc.name;
+      }
+      game.lastResult = res;
       UI.wait(D.timing.victoryToResult).then(function () { if (token === game.battleToken) goResult(); });
     } else {
       const d = G.applyDefeat(ch, D); // 経験値0・HP/MP全回復（Lv・SP・スキルはそのまま）
@@ -276,7 +355,7 @@
   // ---- 魔法／スキル一覧 ----
 
   // 一覧の種類と、そこに並ぶ行動の種類
-  const LIST_TYPES = { magic: ['magic'], skill: ['active'] };
+  const LIST_TYPES = { magic: ['magic', 'heal'], skill: ['active'] };
 
   function listItems(mode) {
     const types = LIST_TYPES[mode] || [];
@@ -337,7 +416,7 @@
 
   function nextBattle() {
     if (game.screen !== 'result') return;
-    startBattle(game.enemyIds); // 同じ相手ともう一度。HP・MPはそのまま
+    startBattle(game.enemyIds); // 同じ出撃先でもう一度。HP・MPはそのまま
   }
 
   function backToBaseFromResult() {
@@ -395,7 +474,15 @@
   // ================= 入力 =================
 
   // クリック／タップ
-  $('btn-sortie').addEventListener('click', function () { if (game.screen === 'base') startBattle([D.battle.enemyId]); });
+  $('btn-sortie').addEventListener('click', function () { if (game.screen === 'base') goSortie(); });
+  $('btn-sortie-back').addEventListener('click', function () { if (game.screen === 'sortie') goBase(); });
+  $('sortie-body').addEventListener('click', function (e) {
+    const btn = e.target.closest('.sortie-item');
+    if (!btn) return;
+    game.sortieIndex = Number(btn.dataset.index);
+    renderSortie();
+    chooseSortie(game.sortieIndex);
+  });
   $('btn-book').addEventListener('click', function () { if (game.screen === 'base') goBook(); });
   $('btn-book-back').addEventListener('click', function () { if (game.screen === 'book') goBase(); });
   $('btn-open-tree').addEventListener('click', function () { if (game.screen === 'book') goTree(); });
@@ -435,8 +522,15 @@
   // キーボード（PC）
   const keyHandlers = {
     base: function (k) {
-      if (k === 'Enter') { startBattle([D.battle.enemyId]); return true; }
+      if (k === 'Enter') { goSortie(); return true; }
       if (k === 'Escape') { goBook(); return true; }
+      return false;
+    },
+    sortie: function (k) {
+      if (k === 'ArrowUp') { moveSortie(-1); return true; }
+      if (k === 'ArrowDown') { moveSortie(1); return true; }
+      if (k === 'Enter') { chooseSortie(game.sortieIndex); return true; }
+      if (k === 'Escape') { goBase(); return true; }
       return false;
     },
     battle: function (k) {

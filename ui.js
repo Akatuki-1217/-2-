@@ -21,6 +21,7 @@
     document.querySelectorAll('.screen').forEach(function (el) {
       el.classList.toggle('active', el.id === 'screen-' + name);
     });
+    $('toast').classList.add('hidden'); // 前の画面のメッセージを持ち越さない
     // 隠れた画面のボタンにフォーカスが残らないようにする
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   }
@@ -50,6 +51,25 @@
       + bar('mp', 'MP', ch.mp, eff.mp)
       + '<div class="row"><span>経験値</span><span>' + ch.exp + ' / ' + expToNext + '</span></div>'
       + '<div class="row"><span>SP</span><span>' + ch.sp + '</span></div>';
+  }
+
+  // ---- 出撃先 ----
+  /**
+   * items: [{ name, enemiesText, recommendedLv, state:'cleared'|'open'|'locked', lockText }]
+   */
+  function renderSortie(items, selectedIndex, level) {
+    const STATE = { cleared: 'クリア済み', open: '出撃できる', locked: 'ロック中' };
+    $('sortie-lv').textContent = 'Lv ' + level;
+    $('sortie-body').innerHTML = '<ul class="sortie-list">' + items.map(function (it, i) {
+      const cls = ['btn', 'sortie-item', it.state];
+      if (i === selectedIndex) cls.push('selected');
+      return '<li><button type="button" class="' + cls.join(' ') + '" data-index="' + i + '">'
+        + '<span class="sortie-name"><span>' + esc(it.name) + '</span><span class="sortie-meta">推奨 Lv' + it.recommendedLv + '</span></span>'
+        + '<span class="sortie-meta">' + (it.state === 'locked' ? esc(it.lockText) : '敵：' + esc(it.enemiesText)) + '</span>'
+        + '<span class="sortie-state">' + STATE[it.state] + '</span></button></li>';
+    }).join('') + '</ul>';
+    const sel = $('sortie-body').querySelector('.selected');
+    if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest' });
   }
 
   // ---- 戦闘 ----
@@ -192,7 +212,15 @@
 
   // ---- 結果画面 ----
   function renderResult(res, ch, eff, data) {
-    let html = '<div class="card result-section"><h2>獲得</h2>'
+    let html = '';
+    if (res.firstClear) {
+      html += '<div class="card result-section unlock"><h2>「' + esc(res.encounterName) + '」をクリア！</h2>'
+        + (res.unlocked.length > 0
+          ? res.unlocked.map(function (e) { return '<div>「' + esc(e.name) + '」に出撃できるようになった</div>'; }).join('')
+          : '<div>すべての出撃先をクリアした</div>')
+        + '</div>';
+    }
+    html += '<div class="card result-section"><h2>獲得</h2>'
       + '<div class="kv"><span>経験値</span><span>+' + res.expGained + '</span></div>'
       + '<div class="kv"><span>SP</span><span>+' + res.spGained + '（合計 ' + ch.sp + '）</span></div>'
       + '<div class="kv"><span>今の経験値</span><span>' + ch.exp + ' / ' + res.expToNext + '</span></div></div>';
@@ -237,8 +265,8 @@
   }
 
   // ---- スキルツリー ----
-  const TYPE_LABEL = { active: 'アクティブスキル', magic: '魔法', passive: 'パッシブスキル' };
-  const TYPE_SHORT = { active: 'アクティブ', magic: '魔法', passive: 'パッシブ' };
+  const TYPE_LABEL = { active: 'アクティブスキル', magic: '魔法', heal: '回復魔法', passive: 'パッシブスキル' };
+  const TYPE_SHORT = { active: 'アクティブ', magic: '魔法', heal: '回復', passive: 'パッシブ' };
   const STATE_LABEL = { owned: '獲得済み', available: '獲得できる', locked: 'ロック中' };
 
   function effectText(skill, data) {
@@ -247,7 +275,9 @@
         return (k === 'hp' || k === 'mp' ? '最大' : '') + data.statLabels[k] + ' +' + skill.bonus[k];
       }).join(' / ');
     }
-    let t = '威力倍率 ×' + skill.power + ' / MP消費 ' + skill.mpCost;
+    let t = skill.type === 'heal'
+      ? '回復量 魔法攻撃力×' + skill.power + ' / MP消費 ' + skill.mpCost
+      : '威力倍率 ×' + skill.power + ' / MP消費 ' + skill.mpCost;
     if (skill.type === 'active' || skill.cooldown > 0) t += ' / クールタイム ' + (skill.cooldown || 0);
     return t;
   }
@@ -295,6 +325,7 @@
     showScreen: showScreen,
     toast: toast,
     renderBase: renderBase,
+    renderSortie: renderSortie,
     setupBattleUnits: setupBattleUnits,
     renderBattleUnits: renderBattleUnits,
     resetBattleView: resetBattleView,
