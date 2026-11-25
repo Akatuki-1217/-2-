@@ -402,7 +402,7 @@
   // ================= 入力 =================
 
   // クリック／タップ
-  $('btn-sortie').addEventListener('click', function () { if (game.screen === 'base') startBattle([D.battle.enemyId]); });
+  $('btn-sortie').addEventListener('click', function () { if (game.screen === 'base') startBattle(D.battle.enemies); });
   $('btn-book').addEventListener('click', function () { if (game.screen === 'base') goBook(); });
   $('btn-book-back').addEventListener('click', function () { if (game.screen === 'book') goBase(); });
   $('btn-open-tree').addEventListener('click', function () { if (game.screen === 'book') goTree(); });
@@ -442,7 +442,7 @@
   // キーボード（PC）
   const keyHandlers = {
     base: function (k) {
-      if (k === 'Enter') { startBattle([D.battle.enemyId]); return true; }
+      if (k === 'Enter') { startBattle(D.battle.enemies); return true; }
       if (k === 'Escape') { goBook(); return true; }
       return false;
     },

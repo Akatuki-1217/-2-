@@ -24,7 +24,7 @@ function makePlayerUnit(ch, data) {
   });
 }
 function makeEnemyUnit(data) {
-  const e = data.enemies[data.battle.enemyId];
+  const e = data.enemies[data.battle.enemies[0]];
   return Battle.createUnit({ id: 'enemy', name: e.name, side: 'enemy', stats: e.stats, actions: Growth.toActions(e.actions, data) });
 }
 
@@ -158,6 +158,25 @@ console.log('■ 戦闘');
   const mage = Battle.createUnit({ id: 'm', name: 'M', side: 'enemy', stats: { hp: 9, mp: 0, atk: 0, def: 0, matk: 5, mdef: 0, spd: 9 }, actions: [{ id: 'fire', name: 'ファイア', type: 'magic', power: 1.2, mpCost: 4, cooldown: 0 }] });
   const p3 = Battle.createUnit({ id: 'p3', name: 'P3', side: 'ally', stats: { hp: 9, mp: 0, atk: 9, def: 0, matk: 0, mdef: 0, spd: 1 }, actions: [DATA.normalAttack] });
   check('MP切れの敵でも決着する', Battle.simulate([mage, p3]).winner === 'ally');
+}
+
+{
+  // 戦闘計算はユニットの数に依存しない（将来の複数ユニット戦に備えた作り）：
+  // 試験兵2体なら、選んだ相手にだけダメージが入り、全員倒すまで終わらない
+  const mk = function (id) { return Battle.createUnit({ id: id, name: id, side: 'enemy', stats: DATA.enemies.soldier.stats, actions: Growth.toActions(DATA.enemies.soldier.actions, DATA) }); };
+  const e1 = mk('e0'); const e2 = mk('e1');
+  const p = makePlayerUnit(Growth.createCharacter(DATA), DATA);
+  p.stats.hp = p.hp = 999;
+  const b = Battle.createBattle([p, e1, e2]);
+  let onlyB = true;
+  while (!b.state.over) {
+    const actor = b.current();
+    if (actor !== p) { b.autoAct(); continue; }
+    b.act(p, attackOnly(p), e2.hp > 0 ? e2 : e1); // 2体目から狙う
+    if (e2.hp > 0 && e1.hp !== e1.stats.hp) onlyB = false;
+  }
+  check('2体のとき、選んだ相手にだけダメージが入る', onlyB);
+  check('2体とも倒すまで終わらない', b.state.winner === 'ally' && e1.hp === 0 && e2.hp === 0);
 }
 
 console.log('■ 成長・拠点');
