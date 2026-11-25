@@ -159,7 +159,7 @@
     res.levelUps.forEach(function (lu) {
       html += '<div class="card result-section levelup"><h2>レベルアップ！ Lv' + lu.from + ' → Lv' + lu.to + '</h2>'
         + '<div class="gain-list">'
-        + data.growth.stats.map(function (k) {
+        + data.statKeys.map(function (k) {
           const g = lu.gains[k];
           return '<div class="kv' + (g === 0 ? ' gain-zero' : '') + '"><span>' + data.statLabels[k] + '</span><span>+' + g + '</span></div>';
         }).join('')
@@ -198,7 +198,8 @@
       ['HP', ch.hp + ' / ' + eff.hp + b('hp')],
       ['MP', ch.mp + ' / ' + eff.mp + b('mp')],
     ];
-    ['atk', 'def', 'matk', 'mdef', 'spd'].forEach(function (k) {
+    data.statKeys.forEach(function (k) {
+      if (k === 'hp' || k === 'mp') return; // HP・MPは「現在／最大」で上に出している
       rows.push([data.statLabels[k], eff[k] + b(k)]);
     });
     rows.push(['SP', ch.sp]);

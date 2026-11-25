@@ -103,13 +103,14 @@
     return t;
   }
 
-  /** 7つの能力値の上昇値を決める。合計が範囲に入るまでやり直す */
-  function rollStatGains(rules, rng) {
+  /** 7つの能力値（data.statKeys）の上昇値を決める。合計が範囲に入るまでやり直す */
+  function rollStatGains(data, rng) {
+    const rules = data.growth;
     rng = rng || random;
     for (let attempt = 1; attempt <= 10000; attempt++) {
       const gains = {};
       let total = 0;
-      rules.stats.forEach(function (k) {
+      data.statKeys.forEach(function (k) {
         const g = randInt(rules.gainMin, rules.gainMax, rng);
         gains[k] = g;
         total += g;
@@ -138,7 +139,7 @@
       ch.exp -= need;
       const from = ch.level;
       ch.level += 1;
-      const roll = rollStatGains(rules, rng);
+      const roll = rollStatGains(data, rng);
       applyStatGains(ch, roll.gains);
       levelUps.push({ from: from, to: ch.level, gains: roll.gains, total: roll.total });
       need = expToNext(ch.level, rules);

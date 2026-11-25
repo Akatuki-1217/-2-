@@ -6,7 +6,7 @@
   'use strict';
 
   const DATA = {
-    // 能力値の並び順と表示名
+    // 能力値の並び順と表示名（Lvアップで伸びる7つの能力値もこの並び）
     statKeys: ['hp', 'mp', 'atk', 'def', 'matk', 'mdef', 'spd'],
     statLabels: {
       hp: 'HP',
@@ -90,7 +90,7 @@
     growth: {
       // Lvアップに必要な経験値。数値ならずっと同じ。配列にするとLvごとに変えられる（[Lv1→2, Lv2→3, ...]）
       expToNext: 30,
-      stats: ['hp', 'mp', 'atk', 'def', 'matk', 'mdef', 'spd'],
+      // 伸びる能力値は statKeys の7つ
       gainMin: 0, // 各能力値の上昇幅（下限）
       gainMax: 2, // 各能力値の上昇幅（上限）
       totalMin: 5, // 7つの合計の下限

@@ -174,10 +174,10 @@ console.log('■ 成長・拠点');
   // 乱数の差し替え（固定）
   Growth.setRandom(Growth.sequenceRandom([0.99]));
   let threw = false;
-  try { Growth.rollStatGains(DATA.growth); } catch (err) { threw = true; }
+  try { Growth.rollStatGains(DATA); } catch (err) { threw = true; }
   check('合計が範囲に入らない乱数（全部+2＝14）はやり直し続け、最後はエラーで止まる', threw);
   Growth.setRandom(Growth.sequenceRandom([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]));
-  const one = Growth.rollStatGains(DATA.growth);
+  const one = Growth.rollStatGains(DATA);
   check('乱数固定：全部+1で合計7', one.total === 7 && one.attempts === 1, one);
   Growth.setRandom();
 
