@@ -54,14 +54,15 @@
     UI.hideConfirm();
     UI.renderTree(game.ch, D, game.treeSel);
     UI.showScreen('tree');
+    focusTreeSelection();
   }
 
   function goResult() {
     game.screen = 'result';
     game.resultIndex = 0;
     UI.renderResult(game.lastResult, game.ch, eff(), D);
-    renderResultSelection();
-    UI.showScreen('result');
+    UI.showScreen('result'); // 先に画面を出す（隠れたボタンにはフォーカスできない）
+    renderResultSelection(true);
   }
 
   // ================= 戦闘 =================
@@ -212,6 +213,7 @@
   function renderList() {
     UI.renderActionList(game.listMode, listItems(game.listMode), game.listIndex);
     UI.setCommandsEnabled(!game.busy);
+    UI.focusSelected($('action-items')); // 選べない項目ならフォーカスなし（Enterは何もしない）
   }
 
   function closeList() {
@@ -237,8 +239,8 @@
     return [$('btn-next-battle'), $('btn-to-base')];
   }
 
-  function renderResultSelection() {
-    UI.setSelectedButton(resultButtons(), game.resultIndex);
+  function renderResultSelection(focus) {
+    UI.setSelectedButton(resultButtons(), game.resultIndex, focus);
   }
 
   function nextBattle() {
@@ -260,17 +262,26 @@
     const check = G.checkAcquire(game.ch, node.skill, D);
     UI.renderTree(game.ch, D, game.treeSel);
     if (!check.ok) {
+      focusTreeSelection();
       UI.toast(check.message, D.timing.toast); // 例外は確認表示を出さずにメッセージ
       return;
     }
     game.confirmSkill = node.skill;
     game.confirmIndex = 0;
     UI.showConfirm(node.skill, game.ch, D);
-    renderConfirmSelection();
+    renderConfirmSelection(true);
   }
 
-  function renderConfirmSelection() {
-    UI.setSelectedButton([$('btn-confirm-ok'), $('btn-confirm-cancel')], game.confirmIndex);
+  function confirmButtons() {
+    return [$('btn-confirm-ok'), $('btn-confirm-cancel')];
+  }
+
+  function renderConfirmSelection(focus) {
+    UI.setSelectedButton(confirmButtons(), game.confirmIndex, focus);
+  }
+
+  function focusTreeSelection() {
+    UI.focusSelected($('tree-body'));
   }
 
   function confirmAcquire() {
@@ -281,11 +292,13 @@
     if (r.ok) UI.toast(D.skills[id].name + 'を獲得した！', D.timing.toast);
     else UI.toast(r.message, D.timing.toast);
     UI.renderTree(game.ch, D, game.treeSel);
+    focusTreeSelection();
   }
 
   function cancelConfirm() {
     game.confirmSkill = null;
     UI.hideConfirm();
+    focusTreeSelection();
   }
 
   function moveTree(dRow, dCol) {
@@ -296,6 +309,7 @@
     if (dCol) col = (col + dCol + len) % len;
     game.treeSel = { row: row, col: col };
     UI.renderTree(game.ch, D, game.treeSel);
+    focusTreeSelection();
   }
 
   // ================= 入力 =================
@@ -333,6 +347,56 @@
   $('btn-confirm-ok').addEventListener('click', confirmAcquire);
   $('btn-confirm-cancel').addEventListener('click', cancelConfirm);
 
+  // Tab やクリックでフォーカスが動いたら、キー操作用の選択位置もそこに合わせる
+  // （Tabで合わせたボタンと、Enterや矢印キーで扱うボタンがずれないように）
+  $('screen-result').addEventListener('focusin', function (e) {
+    const i = resultButtons().indexOf(e.target);
+    if (i >= 0) { game.resultIndex = i; renderResultSelection(false); }
+  });
+  $('confirm-overlay').addEventListener('focusin', function (e) {
+    const i = confirmButtons().indexOf(e.target);
+    if (i >= 0) { game.confirmIndex = i; renderConfirmSelection(false); }
+  });
+  $('tree-body').addEventListener('focusin', function (e) {
+    const btn = e.target.closest('.node');
+    if (!btn) return;
+    game.treeSel = { row: Number(btn.dataset.row), col: Number(btn.dataset.col) };
+    UI.markSelected($('tree-body'), '.node', function (el) { return el === btn; });
+  });
+  $('action-items').addEventListener('focusin', function (e) {
+    const btn = e.target.closest('.action-item');
+    if (!btn) return;
+    game.listIndex = Number(btn.dataset.index);
+    UI.markSelected($('action-items'), '.action-item', function (el) { return el === btn; });
+  });
+
+  /**
+   * 今の画面（確認表示などの重なりが開いていればその中）でフォーカスされている、押せるボタン。
+   * 重なりの後ろにあるボタンは対象外にする。
+   */
+  function focusedButtonInScope() {
+    const el = document.activeElement;
+    if (!el || el.tagName !== 'BUTTON' || el.disabled) return null;
+    const screen = $('screen-' + game.screen);
+    if (!screen) return null;
+    const overlay = screen.querySelector('.overlay:not(.hidden)');
+    return (overlay || screen).contains(el) ? el : null;
+  }
+
+  /** 重なり（確認表示など）が開いている間は、Tab でその中のボタンだけを順に回る */
+  function trapFocus(backward) {
+    const screen = $('screen-' + game.screen);
+    const overlay = screen && screen.querySelector('.overlay:not(.hidden)');
+    if (!overlay) return false;
+    const buttons = Array.prototype.filter.call(overlay.querySelectorAll('button'), function (b) { return !b.disabled; });
+    if (buttons.length === 0) return true; // ボタンのない重なり（敗北表示）では後ろに抜けさせない
+    const i = buttons.indexOf(document.activeElement);
+    const n = buttons.length;
+    const next = i < 0 ? (backward ? n - 1 : 0) : (i + (backward ? -1 : 1) + n) % n;
+    buttons[next].focus();
+    return true;
+  }
+
   // キーボード（PC）
   const keyHandlers = {
     base: function (k) {
@@ -361,7 +425,7 @@
     result: function (k) {
       if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') {
         game.resultIndex = 1 - game.resultIndex;
-        renderResultSelection();
+        renderResultSelection(true);
         return true;
       }
       if (k === 'Enter') {
@@ -380,7 +444,7 @@
       if (game.confirmSkill) {
         if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') {
           game.confirmIndex = 1 - game.confirmIndex;
-          renderConfirmSelection();
+          renderConfirmSelection(true);
           return true;
         }
         if (k === 'Enter') {
@@ -408,6 +472,16 @@
     if (e.repeat && !isArrow) { // 押しっぱなしによる連続入力は無視
       if (k === 'Enter' || k === 'Escape' || k === 'a' || k === 'w' || k === 's') e.preventDefault();
       return;
+    }
+    if (k === 'Tab' && trapFocus(e.shiftKey)) { e.preventDefault(); return; }
+    if (k === 'Enter' || k === ' ') {
+      // フォーカス中のボタンがあれば、ブラウザ標準どおりそのボタンを押させる（Tabで選んだものを優先）
+      if (focusedButtonInScope()) return;
+      // 重なりの後ろのボタンが Space で押されないようにする
+      if (k === ' ' && document.activeElement && document.activeElement.tagName === 'BUTTON') {
+        e.preventDefault();
+        return;
+      }
     }
     const handler = keyHandlers[game.screen];
     // preventDefault で、フォーカス中のボタンがEnterで二重に押されるのを防ぐ

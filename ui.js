@@ -172,8 +172,21 @@
     $('result-body').innerHTML = html;
   }
 
-  function setSelectedButton(buttons, index) {
+  /** 選択中のボタンに印を付ける。focus=true なら、キー操作とTabの位置がずれないようフォーカスも移す */
+  function setSelectedButton(buttons, index, focus) {
     buttons.forEach(function (b, i) { b.classList.toggle('selected', i === index); });
+    if (focus && buttons[index] && !buttons[index].disabled) buttons[index].focus();
+  }
+
+  /** 再描画せずに .selected だけを付け替える（フォーカス中の要素を消さないため） */
+  function markSelected(container, selector, isSelected) {
+    container.querySelectorAll(selector).forEach(function (el) { el.classList.toggle('selected', isSelected(el)); });
+  }
+
+  /** container 内の .selected を持つボタンにフォーカスする（無効なボタンは除く） */
+  function focusSelected(container) {
+    const el = container.querySelector('button.selected');
+    if (el && !el.disabled) el.focus();
   }
 
   // ---- 本（ステータス） ----
@@ -265,6 +278,8 @@
     showDefeat: showDefeat,
     renderResult: renderResult,
     setSelectedButton: setSelectedButton,
+    markSelected: markSelected,
+    focusSelected: focusSelected,
     renderStatus: renderStatus,
     renderTree: renderTree,
     showConfirm: showConfirm,
