@@ -428,6 +428,13 @@
     chooseAction(B.findAction(game.player, D.normalAttack.id));
   }
 
+  /** スキルツリーの各ノードの表示状態（UIに渡す） */
+  function nodeStates() {
+    return D.skillTree.map(function (branch) {
+      return branch.nodes.map(function (node) { return G.getNodeState(game.ch, node.skill, D); });
+    });
+  }
+
   // ================= 結果画面 =================
 
   function resultButtons() {
