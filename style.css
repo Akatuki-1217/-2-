@@ -116,23 +116,6 @@ html, body {
 .base-summary .row { display: flex; justify-content: space-between; padding: 4px 0; }
 .base-summary .lv { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
 
-/* ---- 出撃先 ---- */
-.sortie-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.sortie-item {
-  width: 100%;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-height: 72px;
-}
-.sortie-item .sortie-name { font-size: 16px; display: flex; justify-content: space-between; gap: 8px; }
-.sortie-item .sortie-meta { font-size: 13px; font-weight: 400; color: var(--muted); }
-.sortie-item .sortie-state { font-size: 12px; font-weight: 700; color: var(--primary); }
-.sortie-item.cleared .sortie-state { color: var(--owned); }
-.sortie-item.locked { background: #f1f2f4; color: #9aa1a9; border-style: dashed; }
-.sortie-item.locked .sortie-meta, .sortie-item.locked .sortie-state { color: #9aa1a9; }
-
 /* ---- 戦闘 ---- */
 .turn-label { color: var(--muted); font-size: 14px; }
 
@@ -163,7 +146,6 @@ html, body {
 .bar.hp > span { background: var(--hp); }
 .bar.mp > span { background: var(--mp); }
 .bar-value { text-align: right; font-variant-numeric: tabular-nums; }
-.unit-row.enemies .bar-row { grid-template-columns: 26px 1fr auto; }
 
 /* 攻撃モーション（揺れ・点滅） */
 @keyframes shake {
@@ -274,8 +256,6 @@ html, body {
 .kv { display: flex; justify-content: space-between; padding: 3px 0; font-variant-numeric: tabular-nums; }
 .levelup { border-color: var(--selected); background: #fff8eb; }
 .levelup h2 { color: #b36b00; }
-.unlock { border-color: var(--owned); background: #effaf3; }
-.unlock h2 { color: var(--owned); }
 .gain-list { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; }
 .gain-zero { color: var(--muted); }
 

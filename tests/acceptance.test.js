@@ -24,7 +24,7 @@ function makePlayerUnit(ch, data) {
   });
 }
 function makeEnemyUnit(data) {
-  const e = data.enemies.soldier;
+  const e = data.enemies[data.battle.enemyId];
   return Battle.createUnit({ id: 'enemy', name: e.name, side: 'enemy', stats: e.stats, actions: Growth.toActions(e.actions, data) });
 }
 
@@ -160,60 +160,6 @@ console.log('■ 戦闘');
   check('MP切れの敵でも決着する', Battle.simulate([mage, p3]).winner === 'ally');
 }
 
-{
-  // 回復：魔法攻撃力 × 威力倍率（切り捨て）、最大HPは超えない
-  const heal = Growth.toAction('healing_light', DATA);
-  const h = Battle.createUnit({ id: 'h', name: 'H', side: 'ally', stats: { hp: 50, mp: 20, atk: 0, def: 0, matk: 8, mdef: 0, spd: 1 }, hp: 30, actions: [heal] });
-  const r = Battle.executeAction(h, h, heal);
-  check('癒しの光で11回復（8×1.4=11.2）・MP5消費', r.ok && r.heal === 11 && h.hp === 41 && h.mp === 15, r);
-  h.hp = 48;
-  check('最大HPを超えて回復しない', Battle.executeAction(h, h, heal).heal === 2 && h.hp === 50);
-  const foe = Battle.createUnit({ id: 'f', name: 'F', side: 'enemy', stats: { hp: 10, mp: 0, atk: 0, def: 0, matk: 0, mdef: 0, spd: 1 } });
-  check('回復は相手に使えない・攻撃は味方に使えない',
-    Battle.executeAction(h, foe, heal).reason === 'invalid_target' && Battle.executeAction(h, h, DATA.normalAttack).reason === 'invalid_target');
-}
-{
-  // 自動行動：回復役は仲間のHPが減ったときだけ回復し、それ以外は攻撃する
-  const D2 = DATA;
-  const mk = function (id, uid, side) {
-    return Battle.createUnit({ id: uid, name: D2.enemies[id].name, side: side || 'enemy', stats: D2.enemies[id].stats, actions: Growth.toActions(D2.enemies[id].actions, D2) });
-  };
-  const acolyte = mk('acolyte', 'a');
-  const captain = mk('captain', 'c');
-  const hero = Battle.createUnit({ id: 'p', name: 'P', side: 'ally', stats: DATA.player.stats, actions: [] });
-  const units = [hero, acolyte, captain];
-  const opts = { healBelow: DATA.battle.aiHealBelow };
-  check('仲間が元気なら回復役は攻撃する', Battle.chooseAutoMove(units, acolyte, opts).action.id === 'attack');
-  captain.hp = 20; // 56の36%
-  const m = Battle.chooseAutoMove(units, acolyte, opts);
-  check('仲間のHPが6割未満なら回復する', m.action.id === 'healing_light' && m.target === captain, m && m.action.id);
-  check('隊長は兜割りを優先する', Battle.chooseAutoMove(units, captain, opts).action.id === 'helm_splitter');
-  captain.cooldowns.helm_splitter = 1;
-  check('兜割りがクールタイム中なら通常攻撃', Battle.chooseAutoMove(units, captain, opts).action.id === 'attack');
-  // 攻撃は HPの割合がいちばん低い相手を狙う
-  const p2 = Battle.createUnit({ id: 'p2', name: 'P2', side: 'ally', stats: DATA.player.stats, hp: 10 });
-  check('攻撃はいちばん弱っている相手を狙う', Battle.chooseAutoMove([hero, p2, captain], captain, opts).target === p2);
-}
-{
-  // 複数の敵：全員倒すまで終わらない。攻撃先は自分で選べる
-  const s1 = Battle.createUnit({ id: 'e0', name: '斥候兵A', side: 'enemy', stats: DATA.enemies.scout.stats, actions: Growth.toActions(['attack'], DATA) });
-  const s2 = Battle.createUnit({ id: 'e1', name: '斥候兵B', side: 'enemy', stats: DATA.enemies.scout.stats, actions: Growth.toActions(['attack'], DATA) });
-  const ch = Growth.createCharacter(DATA);
-  const p = makePlayerUnit(ch, DATA);
-  const b = Battle.createBattle([p, s1, s2]);
-  let firstTarget = null;
-  while (!b.state.over) {
-    const actor = b.current();
-    if (actor !== p) { b.autoAct(); continue; }
-    const t = s2.hp > 0 ? s2 : s1; // B から狙う
-    if (!firstTarget) firstTarget = t;
-    b.act(p, attackOnly(p), t);
-    if (s2.hp > 0) check('Bを狙っている間はAは無傷', s1.hp === s1.stats.hp);
-  }
-  check('斥候兵2体：選んだ相手にダメージが入り、全員倒して勝つ', firstTarget === s2 && b.state.winner === 'ally' && s1.hp === 0 && s2.hp === 0);
-  check('報酬は敵ごとの合計', JSON.stringify(Growth.sumRewards(['scout', 'scout'], DATA)) === JSON.stringify({ exp: 14, sp: 2 }));
-}
-
 console.log('■ 成長・拠点');
 {
   for (let seed = 1; seed <= 200; seed++) {
@@ -291,8 +237,7 @@ console.log('■ 設計');
   const bad = clone(DATA);
   bad.skills.fire.mpCost = 99;
   bad.enemies.soldier.actions = ['attack', 'strength', 'no_such'];
-  bad.encounters.push({ id: 'x', name: 'X', enemies: ['ghost'], requires: 'nowhere' });
-  check('範囲外の値・行動にならないID・存在しない敵や解放条件は警告される', Growth.validateData(bad).length === 5, Growth.validateData(bad));
+  check('範囲外の値・行動にならないIDは警告される', Growth.validateData(bad).length === 3, Growth.validateData(bad));
 }
 {
   // 行動の作り方は1つ：通常攻撃・魔法・スキルを変換。パッシブや存在しないIDは null

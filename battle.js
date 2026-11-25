@@ -5,8 +5,7 @@
  *
  * ユニット: { id, name, side, controller, stats:{hp,mp,atk,def,matk,mdef,spd}, hp, mp, actions:[], cooldowns:{} }
  *   stats.hp / stats.mp は最大値、hp / mp は現在値。
- * 行動(action): { id, name, type:'attack'|'active'|'magic'|'heal'|'wait', power, mpCost, cooldown }
- *   heal は味方（自分を含む）のHPを「魔法攻撃力 × 威力倍率」だけ回復する。
+ * 行動(action): { id, name, type:'attack'|'active'|'magic', power, mpCost, cooldown }
  */
 (function (root) {
   'use strict';
@@ -31,21 +30,9 @@
     };
   }
 
-  // 魔法・回復は魔法攻撃力／魔法防御力、それ以外（通常攻撃・アクティブスキル）は攻撃力／防御力
+  // 魔法は魔法攻撃力／魔法防御力、それ以外（通常攻撃・アクティブスキル）は攻撃力／防御力
   function getDamageStats(action) {
-    return action.type === 'magic' || action.type === 'heal' ? { atk: 'matk', def: 'mdef' } : { atk: 'atk', def: 'def' };
-  }
-
-  /** 回復量：魔法攻撃力 × 威力倍率（切り捨て）。最大HPを超えた分は捨てる */
-  function calcHeal(healer, target, action) {
-    const power = action.power != null ? action.power : 1;
-    const amount = Math.max(0, floorSafe(healer.stats.matk * power));
-    return Math.min(amount, Math.max(0, target.stats.hp - target.hp));
-  }
-
-  /** 相手に向ける行動か（回復・様子見以外） */
-  function isOffensive(action) {
-    return action.type !== 'heal' && action.type !== 'wait';
+    return action.type === 'magic' ? { atk: 'matk', def: 'mdef' } : { atk: 'atk', def: 'def' };
   }
 
   /** ダメージ計算：攻撃側の能力値 × 威力倍率 − 相手の防御側能力値（式全体のあとで切り捨て、0以下は0） */
@@ -93,22 +80,10 @@
       };
     }
     if (!target || target.hp <= 0) return { ok: false, reason: 'invalid_target' };
-    // 攻撃は相手の陣営に、回復は自分の陣営にだけ使える
-    if (isOffensive(action) === (target.side === actor.side)) return { ok: false, reason: 'invalid_target' };
 
     const mpCost = action.mpCost || 0;
     actor.mp -= mpCost;
     if ((action.cooldown || 0) > 0) actor.cooldowns[action.id] = action.cooldown;
-
-    if (action.type === 'heal') {
-      const healed = calcHeal(actor, target, action);
-      target.hp += healed;
-      return {
-        ok: true, actorId: actor.id, targetId: target.id, actionId: action.id, actionName: action.name,
-        actionType: 'heal', damage: 0, heal: healed, effective: healed > 0, mpCost: mpCost,
-        targetHp: target.hp, defeated: false,
-      };
-    }
 
     const dmg = calcDamage(actor, target, action);
     target.hp = Math.max(0, target.hp - dmg.damage);
@@ -174,34 +149,17 @@
     return null;
   }
 
-  const hpRate = function (u) { return u.stats.hp > 0 ? u.hp / u.stats.hp : 0; };
-
-  /** いちばんHPの割合が低いユニット（同じなら先に並んでいる方） */
-  function weakest(list) {
-    return list.reduce(function (best, u) { return !best || hpRate(u) < hpRate(best) ? u : best; }, null);
+  /** 自動行動（MVPの敵は通常攻撃のみ）：使える最初の行動を選ぶ */
+  function chooseAutoAction(unit) {
+    for (let i = 0; i < unit.actions.length; i++) {
+      if (canUseAction(unit, unit.actions[i]).ok) return unit.actions[i];
+    }
+    return null;
   }
 
-  /**
-   * 自動行動の「何を・誰に」を決める。行動は持っている順に優先して試す。
-   *  - 回復：HPの割合が opts.healBelow 未満の味方がいるときだけ、いちばん減っている味方に使う
-   *  - 攻撃：生きている相手のうち、いちばんHPの割合が低い相手を狙う
-   * 使える行動がなければ null（呼び出し側で「様子を見る」にする）。
-   */
-  function chooseAutoMove(units, actor, opts) {
-    const healBelow = opts && opts.healBelow != null ? opts.healBelow : 0.5;
-    const alive = units.filter(function (u) { return u.hp > 0; });
-    const foes = alive.filter(function (u) { return u.side !== actor.side; });
-    const friends = alive.filter(function (u) { return u.side === actor.side; });
-    for (let i = 0; i < actor.actions.length; i++) {
-      const action = actor.actions[i];
-      if (!canUseAction(actor, action).ok) continue;
-      if (action.type === 'wait') continue;
-      if (action.type === 'heal') {
-        const hurt = friends.filter(function (u) { return hpRate(u) < healBelow; });
-        if (hurt.length > 0) return { action: action, target: weakest(hurt) };
-        continue;
-      }
-      if (foes.length > 0) return { action: action, target: weakest(foes) };
+  function chooseAutoTarget(units, actor) {
+    for (let i = 0; i < units.length; i++) {
+      if (units[i].side !== actor.side && units[i].hp > 0) return units[i];
     }
     return null;
   }
@@ -211,8 +169,7 @@
    *   const b = Battle.createBattle([unitA, unitB]);
    *   b.current()           … 今行動するユニット（必要なら新しいターンを始める）
    *   b.act(actor, action, target) … 行動して結果を返す
-   *   b.autoAct()           … 今のユニットを自動行動させる（行動できなければ様子を見る）
-   *   b.pass()              … 今のユニットに様子を見させる
+   *   b.autoAct()           … 今のユニットを自動行動させる
    */
   function createBattle(units, opts) {
     const state = { units: units, turn: 0, order: [], index: 0, over: false, winner: null };
@@ -232,7 +189,7 @@
     function act(actor, action, target) {
       if (state.over) return { ok: false, reason: 'battle_over' };
       if (actor !== current()) return { ok: false, reason: 'not_your_turn' };
-      const r = executeAction(actor, target, action);
+      const r = executeAction(actor, target || chooseAutoTarget(units, actor), action);
       if (!r.ok) return r;
 
       endTurn(actor, action.id);
@@ -259,9 +216,9 @@
     function autoAct() {
       const actor = current();
       if (!actor) return { ok: false, reason: 'battle_over' };
-      const move = chooseAutoMove(units, actor, opts);
-      if (!move) return pass(actor);
-      const r = act(actor, move.action, move.target);
+      const action = chooseAutoAction(actor);
+      if (!action) return pass(actor);
+      const r = act(actor, action, chooseAutoTarget(units, actor));
       return r.ok ? r : pass(actor);
     }
 
@@ -301,9 +258,8 @@
     isDefeated: isDefeated,
     getTurnOrder: getTurnOrder,
     getWinnerSide: getWinnerSide,
-    calcHeal: calcHeal,
-    isOffensive: isOffensive,
-    chooseAutoMove: chooseAutoMove,
+    chooseAutoAction: chooseAutoAction,
+    chooseAutoTarget: chooseAutoTarget,
     createBattle: createBattle,
     simulate: simulate,
   };
