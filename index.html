@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>戦略RPG（MVP）</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- 拠点 -->
+    <section id="screen-base" class="screen" aria-label="拠点">
+      <header class="screen-header">
+        <h1>拠点</h1>
+      </header>
+      <div class="screen-body base-body">
+        <div class="card base-summary" id="base-summary"></div>
+        <p class="hint">本でステータスの確認とスキルの獲得ができます。</p>
+      </div>
+      <div class="bottom-actions">
+        <button type="button" class="btn" id="btn-book">📖 本 <span class="key">[Esc]</span></button>
+        <button type="button" class="btn btn-primary" id="btn-sortie">出撃 <span class="key">[Enter]</span></button>
+      </div>
+    </section>
+
+    <!-- 戦闘 -->
+    <section id="screen-battle" class="screen" aria-label="戦闘">
+      <header class="screen-header">
+        <h1>戦闘</h1>
+        <span class="turn-label" id="turn-label"></span>
+      </header>
+      <div class="battle-field">
+        <div class="unit-panel enemy" id="enemy-panel"></div>
+        <div class="unit-panel ally" id="player-panel"></div>
+      </div>
+      <div class="battle-log" id="battle-log" aria-live="polite"></div>
+      <div class="command-area">
+        <div class="action-list hidden" id="action-list">
+          <div class="action-list-title" id="action-list-title"></div>
+          <ul class="action-items" id="action-items"></ul>
+          <button type="button" class="btn" id="btn-list-back">戻る <span class="key">[Esc]</span></button>
+        </div>
+        <div class="commands" id="commands">
+          <button type="button" class="btn btn-cmd" data-cmd="attack">攻撃 <span class="key">[A]</span></button>
+          <button type="button" class="btn btn-cmd" data-cmd="magic">魔法 <span class="key">[W]</span></button>
+          <button type="button" class="btn btn-cmd" data-cmd="skill">スキル <span class="key">[S]</span></button>
+        </div>
+      </div>
+      <div class="overlay hidden" id="defeat-overlay" role="dialog" aria-label="敗北">
+        <div class="overlay-box">
+          <p class="defeat-title">敗北…</p>
+          <p id="defeat-detail"></p>
+          <p class="hint">タップ／Enterで拠点に戻る</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 結果画面 -->
+    <section id="screen-result" class="screen" aria-label="結果">
+      <header class="screen-header">
+        <h1>勝利！</h1>
+      </header>
+      <div class="screen-body" id="result-body"></div>
+      <div class="bottom-actions">
+        <button type="button" class="btn" id="btn-to-base" data-index="1">拠点に戻る</button>
+        <button type="button" class="btn btn-primary" id="btn-next-battle" data-index="0">次の戦闘へ</button>
+      </div>
+    </section>
+
+    <!-- 本（ステータス） -->
+    <section id="screen-book" class="screen" aria-label="ステータス">
+      <header class="screen-header">
+        <h1>📖 ステータス</h1>
+      </header>
+      <div class="screen-body">
+        <table class="card stat-table" id="status-table"></table>
+      </div>
+      <div class="bottom-actions">
+        <button type="button" class="btn" id="btn-book-back">戻る <span class="key">[Esc]</span></button>
+        <button type="button" class="btn btn-primary" id="btn-open-tree">スキルツリー <span class="key">[Enter]</span></button>
+      </div>
+    </section>
+
+    <!-- スキルツリー -->
+    <section id="screen-tree" class="screen" aria-label="スキルツリー">
+      <header class="screen-header">
+        <h1>スキルツリー</h1>
+        <span class="sp-label" id="tree-sp"></span>
+      </header>
+      <div class="screen-body" id="tree-body"></div>
+      <div class="bottom-actions">
+        <button type="button" class="btn" id="btn-tree-back">戻る <span class="key">[Esc]</span></button>
+      </div>
+      <div class="overlay hidden" id="confirm-overlay" role="dialog" aria-label="スキル獲得の確認">
+        <div class="overlay-box confirm-box">
+          <div id="confirm-content"></div>
+          <div class="confirm-actions">
+            <button type="button" class="btn" id="btn-confirm-cancel" data-index="1">やめる</button>
+            <button type="button" class="btn btn-primary" id="btn-confirm-ok" data-index="0">獲得する</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="toast hidden" id="toast" role="status"></div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="battle.js"></script>
+  <script src="growth.js"></script>
+  <script src="ui.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
