@@ -252,6 +252,41 @@ console.log('■ 設計');
   const ch2 = Growth.createCharacter(data2);
   check('試験兵HP28でも通常攻撃は5ターン', fight(ch2, data2, attackOnly).turns === 5);
 }
+{
+  // Lv1（攻撃とファイアだけ）で、回復なしに何連勝できるかを全パターンで調べる。
+  // 1戦の中ではダメージの順番で必要な手数は変わらないので、各戦闘で「ファイアを何回使うか」だけを総当たりする
+  function maxStreak(data) {
+    const maxFire = Math.floor(data.player.stats.mp / data.skills.fire.mpCost);
+    let best = 0;
+    const plan = [];
+    (function search(depth) {
+      if (depth === 3) {
+        const ch = Growth.createCharacter(data);
+        let wins = 0;
+        for (let i = 0; i < 3; i++) {
+          let used = 0;
+          const r = fight(ch, data, function (p) {
+            const f = p.actions.find(function (a) { return a.id === 'fire'; });
+            if (used < plan[i] && Battle.canUseAction(p, f).ok) { used++; return f; }
+            return p.actions[0];
+          });
+          if (r.winner !== 'ally') break;
+          wins++;
+        }
+        best = Math.max(best, wins);
+        return;
+      }
+      for (let f = 0; f <= maxFire; f++) { plan[depth] = f; search(depth + 1); }
+    })(0);
+    return best;
+  }
+  [30, 28].forEach(function (hp) {
+    const d = clone(DATA);
+    d.enemies.soldier.stats.hp = hp;
+    const best = maxStreak(d);
+    check('試験兵HP' + hp + ': どう戦っても回復なしの連勝は2回まで（3戦目は負け）', best === 2, best);
+  });
+}
 
 console.log(failed === 0 ? '\nすべて成功' : '\n失敗: ' + failed + '件');
 process.exit(failed === 0 ? 0 : 1);
