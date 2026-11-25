@@ -133,6 +133,20 @@ console.log('■ 戦闘');
   const sim = Battle.simulate([fast, slow]);
   check('途中終了（後攻は行動しない）', sim.log.length === 1 && sim.winner === 'ally' && fast.hp === 10);
 }
+{
+  // 使える行動がない（MP不足のスキルだけ）ユニットは待機し、手番が止まらない
+  const strike = { id: 'power_strike', name: '強打', type: 'active', power: 1.4, mpCost: 3, cooldown: 1 };
+  const p = Battle.createUnit({ id: 'p', name: 'P', side: 'ally', stats: { hp: 30, mp: 0, atk: 10, def: 0, matk: 0, mdef: 0, spd: 1 }, actions: [DATA.normalAttack] });
+  const e = Battle.createUnit({ id: 'e', name: 'E', side: 'enemy', stats: { hp: 30, mp: 0, atk: 10, def: 0, matk: 0, mdef: 0, spd: 9 }, actions: [strike] });
+  const b = Battle.createBattle([p, e]);
+  const r = b.autoAct();
+  check('使える行動がなければ待機して手番が進む', r.ok && r.actionType === 'wait' && b.current() === p && p.hp === 30, r);
+  const sim = Battle.simulate([
+    Battle.createUnit({ id: 'p', name: 'P', side: 'ally', stats: { hp: 30, mp: 0, atk: 10, def: 0, matk: 0, mdef: 0, spd: 1 }, actions: [DATA.normalAttack] }),
+    Battle.createUnit({ id: 'e', name: 'E', side: 'enemy', stats: { hp: 30, mp: 0, atk: 10, def: 0, matk: 0, mdef: 0, spd: 9 }, actions: [strike] }),
+  ]);
+  check('待機する敵とも決着までたどり着く', sim.winner === 'ally' && sim.turns === 3, sim);
+}
 
 console.log('■ 成長・拠点');
 {

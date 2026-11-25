@@ -154,7 +154,8 @@
    *   const b = Battle.createBattle([unitA, unitB]);
    *   b.current()           … 今行動するユニット（必要なら新しいターンを始める）
    *   b.act(actor, action, target) … 行動して結果を返す
-   *   b.autoAct()           … 今のユニットを自動行動させる
+   *   b.pass(actor)         … 何もせずに手番を終える（待機）
+   *   b.autoAct()           … 今のユニットを自動行動させる（使える行動がなければ待機）
    */
   function createBattle(units, opts) {
     const state = { units: units, turn: 0, order: [], index: 0, over: false, winner: null };
@@ -192,16 +193,48 @@
       return r;
     }
 
+    /**
+     * 何もせずに手番を終える（待機）。使える行動がないときに手番が止まらないようにするため。
+     * クールタイムは通常の手番と同じく1減る。
+     */
+    function pass(actor) {
+      if (state.over) return { ok: false, reason: 'battle_over' };
+      if (actor !== current()) return { ok: false, reason: 'not_your_turn' };
+      endTurn(actor, null);
+      state.index += 1;
+      return {
+        ok: true,
+        actorId: actor.id,
+        targetId: null,
+        actionId: 'wait',
+        actionName: '待機',
+        actionType: 'wait',
+        damage: 0,
+        effective: false,
+        mpCost: 0,
+        targetHp: null,
+        defeated: false,
+        turn: state.turn,
+        battleOver: false,
+        winner: null,
+      };
+    }
+
+    /** 今のユニットを自動行動させる。使える行動がなければ待機して手番を進める */
     function autoAct() {
       const actor = current();
       if (!actor) return { ok: false, reason: 'battle_over' };
-      return act(actor, chooseAutoAction(actor), chooseAutoTarget(units, actor));
+      const action = chooseAutoAction(actor);
+      const target = chooseAutoTarget(units, actor);
+      if (!action || !target) return pass(actor);
+      return act(actor, action, target);
     }
 
     return {
       state: state,
       current: current,
       act: act,
+      pass: pass,
       autoAct: autoAct,
       getUnit: function (id) { return units.find(function (u) { return u.id === id; }) || null; },
     };

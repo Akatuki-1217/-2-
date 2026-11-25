@@ -133,6 +133,10 @@
   function showActionResult(r) {
     if (!r || !r.ok) return Promise.resolve();
     const actor = game.battle.getUnit(r.actorId);
+    if (r.actionType === 'wait') {
+      UI.log(actor.name + 'は様子を見ている…');
+      return UI.wait(D.timing.hitAnimation);
+    }
     const target = game.battle.getUnit(r.targetId);
     UI.log(actor.name + (r.actionType === 'attack' ? 'の攻撃！' : 'の' + r.actionName + '！'));
     if (r.effective) UI.playHit(target.side);
