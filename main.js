@@ -493,28 +493,8 @@
     if (handler && handler(k)) e.preventDefault();
   });
 
-  // ================= データ検証（第7章の範囲外なら警告） =================
+  // ================= データ検証（第7章の範囲外などは警告） =================
 
-  function validateData() {
-    const inRange = function (v, r) { return v >= r[0] && v <= r[1]; };
-    Object.keys(D.skills).forEach(function (id) {
-      const s = D.skills[id];
-      const rank = D.ranks[s.rank];
-      const warn = function (msg) { console.warn('[data.js] ' + s.name + '（' + s.rank + '）: ' + msg); };
-      if (!rank) { warn('ランクが定義されていません'); return; }
-      if (s.sp !== rank.sp) warn('必要SP ' + s.sp + ' がランク表（' + rank.sp + '）と違います');
-      if (s.type === 'passive') {
-        Object.keys(s.bonus || {}).forEach(function (k) {
-          if (s.bonus[k] !== rank.passive) warn('上昇量 ' + s.bonus[k] + ' がランク表（+' + rank.passive + '）と違います');
-        });
-        return;
-      }
-      if (!inRange(s.power, rank.power)) warn('威力倍率 ' + s.power + ' が範囲外です');
-      if (!inRange(s.mpCost, rank.mpCost)) warn('MP消費 ' + s.mpCost + ' が範囲外です');
-      if (s.type === 'active' && !inRange(s.cooldown || 0, rank.cooldown)) warn('クールタイム ' + s.cooldown + ' が範囲外です');
-    });
-  }
-
-  validateData();
+  Validate.validateData(D).forEach(function (msg) { console.warn(msg); });
   goBase();
 })();

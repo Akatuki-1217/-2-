@@ -7,6 +7,7 @@
 const DATA = require('../data.js');
 const Battle = require('../battle.js');
 const Growth = require('../growth.js');
+const Validate = require('../validate.js');
 
 let failed = 0;
 function check(name, cond, detail) {
@@ -224,6 +225,19 @@ console.log('■ 成長・拠点');
 }
 
 console.log('■ 設計');
+{
+  const warnings = Validate.validateData(DATA);
+  check('data.js の今の値はランク表どおり（警告なし）', warnings.length === 0, warnings);
+  const bad = clone(DATA);
+  bad.skills.fire.power = 2.0;
+  bad.skills.flame.cooldown = 1;
+  bad.skills.strength.bonus.atk = 3;
+  bad.skillTree[0].nodes[1].skill = 'no_such_skill';
+  bad.enemies.soldier.actions = ['vitality'];
+  const w = Validate.validateData(bad).join('\n');
+  check('範囲外・魔法のクールタイム・パッシブ上昇量・参照切れ・敵の行動を警告する',
+    /威力倍率 2/.test(w) && /魔法のクールタイム/.test(w) && /上昇量 3/.test(w) && /no_such_skill/.test(w) && /試験兵/.test(w), w);
+}
 {
   // data.js の数値を書き換えるだけで強さが変わる
   const data2 = clone(DATA);
