@@ -91,7 +91,6 @@ html, body {
 .btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
 .btn-primary:active:not(:disabled) { background: #2559b5; }
 .btn:disabled { opacity: 0.45; cursor: default; }
-.btn-danger-outline { width: 100%; color: var(--danger); border-color: var(--danger); font-weight: 400; }
 .btn.selected, .node.selected, .action-item.selected {
   outline: 3px solid var(--selected);
   outline-offset: 1px;

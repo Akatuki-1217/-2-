@@ -9,30 +9,8 @@
   const B = window.Battle;
   const G = window.Growth;
 
-  // ================= セーブ（ブラウザの localStorage） =================
-  // 保存できない環境（プライベートブラウズなど）でも遊べるよう、失敗は無視する
-
-  const SAVE_KEY = 'srpg-save-v1';
-
-  function loadCharacter() {
-    try {
-      const raw = window.localStorage.getItem(SAVE_KEY);
-      const ch = raw ? G.deserialize(JSON.parse(raw), D) : null;
-      if (ch) return ch;
-    } catch (e) { /* 読めなければ最初から */ }
-    return G.createCharacter(D);
-  }
-
-  function save() {
-    try { window.localStorage.setItem(SAVE_KEY, JSON.stringify(G.serialize(game.ch))); } catch (e) { /* 保存できなくても続ける */ }
-  }
-
-  function clearSave() {
-    try { window.localStorage.removeItem(SAVE_KEY); } catch (e) { /* 何もしない */ }
-  }
-
   const game = {
-    ch: loadCharacter(), // 保存データがあれば続きから（拠点・HP/MP全回復で再開）
+    ch: G.createCharacter(D), // セーブなし：再読み込みで初期状態（Lv1・拠点）
     screen: 'base',
     // 戦闘
     battle: null,
@@ -321,11 +299,9 @@
         res.encounterName = enc.name;
       }
       game.lastResult = res;
-      save();
       UI.wait(D.timing.victoryToResult).then(function () { if (token === game.battleToken) goResult(); });
     } else {
       const d = G.applyDefeat(ch, D); // 経験値0・HP/MP全回復（Lv・SP・スキルはそのまま）
-      save();
       UI.showDefeat(d.lostExp);
       UI.wait(D.timing.defeatInputDelay).then(function () { if (token === game.battleToken) game.defeatReady = true; });
     }
@@ -481,7 +457,6 @@
     if (!game.confirmSkill) return;
     const id = game.confirmSkill;
     const r = G.acquireSkill(game.ch, id, D);
-    if (r.ok) save();
     cancelConfirm();
     if (r.ok) UI.toast(D.skills[id].name + 'を獲得した！', D.timing.toast);
     else UI.toast(r.message, D.timing.toast);
@@ -518,14 +493,6 @@
   $('btn-book').addEventListener('click', function () { if (game.screen === 'base') goBook(); });
   $('btn-book-back').addEventListener('click', function () { if (game.screen === 'book') goBase(); });
   $('btn-open-tree').addEventListener('click', function () { if (game.screen === 'book') goTree(); });
-  $('btn-reset').addEventListener('click', function () {
-    if (game.screen !== 'book') return;
-    if (!window.confirm('セーブデータを消して、Lv1から始め直しますか？')) return;
-    clearSave();
-    game.ch = G.createCharacter(D);
-    UI.toast('最初からになりました', D.timing.toast);
-    goBook();
-  });
   $('btn-tree-back').addEventListener('click', function () { if (game.screen === 'tree') goBook(); });
 
   $('commands').addEventListener('click', function (e) {
