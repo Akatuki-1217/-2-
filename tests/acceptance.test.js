@@ -134,6 +134,32 @@ console.log('■ 戦闘');
   check('途中終了（後攻は行動しない）', sim.log.length === 1 && sim.winner === 'ally' && fast.hp === 10);
 }
 
+{
+  // 行動できない敵でも止まらない：「様子を見る」でターンが進み、クールタイムも減る
+  const hit = { id: 'snipe', name: '狙い撃ち', type: 'active', power: 1.0, mpCost: 0, cooldown: 1 };
+  const p = Battle.createUnit({ id: 'p', name: 'P', side: 'ally', stats: { hp: 99, mp: 0, atk: 0, def: 0, matk: 0, mdef: 0, spd: 1 }, actions: [] });
+  const e = Battle.createUnit({ id: 'e', name: 'E', side: 'enemy', stats: { hp: 99, mp: 0, atk: 5, def: 0, matk: 0, mdef: 0, spd: 9 }, actions: [hit] });
+  const b = Battle.createBattle([p, e]);
+  const kinds = [];
+  for (let t = 1; t <= 4; t++) {
+    const r = b.autoAct(); // 敵
+    kinds.push(r.ok ? r.actionType : 'FAIL');
+    b.autoAct(); // P（行動なし）
+  }
+  check('クールタイム付きの技しかない敵: 使う/様子見/使う/様子見', kinds.join(',') === 'active,wait,active,wait', kinds);
+  check('ターンが進む（4ターン）', b.state.turn === 4, b.state.turn);
+
+  const none = Battle.createUnit({ id: 'n', name: 'N', side: 'enemy', stats: { hp: 9, mp: 0, atk: 0, def: 0, matk: 0, mdef: 0, spd: 9 }, actions: [] });
+  const p2 = Battle.createUnit({ id: 'p2', name: 'P2', side: 'ally', stats: { hp: 9, mp: 0, atk: 9, def: 0, matk: 0, mdef: 0, spd: 1 }, actions: [DATA.normalAttack] });
+  const sim = Battle.simulate([none, p2]);
+  check('行動を1つも持たない敵でも決着する', sim.winner === 'ally' && sim.log[0].actionType === 'wait', sim.winner);
+
+  // MP切れの魔法しかない敵も同じ
+  const mage = Battle.createUnit({ id: 'm', name: 'M', side: 'enemy', stats: { hp: 9, mp: 0, atk: 0, def: 0, matk: 5, mdef: 0, spd: 9 }, actions: [{ id: 'fire', name: 'ファイア', type: 'magic', power: 1.2, mpCost: 4, cooldown: 0 }] });
+  const p3 = Battle.createUnit({ id: 'p3', name: 'P3', side: 'ally', stats: { hp: 9, mp: 0, atk: 9, def: 0, matk: 0, mdef: 0, spd: 1 }, actions: [DATA.normalAttack] });
+  check('MP切れの敵でも決着する', Battle.simulate([mage, p3]).winner === 'ally');
+}
+
 console.log('■ 成長・拠点');
 {
   for (let seed = 1; seed <= 200; seed++) {

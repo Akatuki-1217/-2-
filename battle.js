@@ -47,10 +47,14 @@
     return unit.cooldowns[actionId] || 0;
   }
 
+  /** 何もしない行動。使える行動が1つもないときに使う（クールタイムは通常どおり減る） */
+  const WAIT = { id: 'wait', name: '様子を見る', type: 'wait', power: 0, mpCost: 0, cooldown: 0 };
+
   /** 行動が使えるか（MP・クールタイム） */
   function canUseAction(unit, action) {
     if (!action) return { ok: false, reason: 'no_action' };
     if (unit.hp <= 0) return { ok: false, reason: 'defeated' };
+    if (action.type === 'wait') return { ok: true };
     const cd = getCooldown(unit, action.id);
     if (cd > 0) return { ok: false, reason: 'cooldown', remaining: cd };
     if ((action.mpCost || 0) > unit.mp) return { ok: false, reason: 'mp' };
@@ -64,6 +68,12 @@
   function executeAction(actor, target, action) {
     const check = canUseAction(actor, action);
     if (!check.ok) return Object.assign({ ok: false }, check);
+    if (action.type === 'wait') {
+      return {
+        ok: true, actorId: actor.id, targetId: null, actionId: action.id, actionName: action.name,
+        actionType: 'wait', damage: 0, effective: false, mpCost: 0, targetHp: null, defeated: false,
+      };
+    }
     if (!target || target.hp <= 0) return { ok: false, reason: 'invalid_target' };
 
     const mpCost = action.mpCost || 0;
@@ -192,16 +202,26 @@
       return r;
     }
 
+    /** 今のユニットに「様子を見る」をさせてターンを進める（必ず成功する） */
+    function pass(actor) {
+      return act(actor || current(), WAIT, null);
+    }
+
+    /** 今のユニットを自動行動させる。使える行動がない・失敗したときは「様子を見る」で必ずターンを進める */
     function autoAct() {
       const actor = current();
       if (!actor) return { ok: false, reason: 'battle_over' };
-      return act(actor, chooseAutoAction(actor), chooseAutoTarget(units, actor));
+      const action = chooseAutoAction(actor);
+      if (!action) return pass(actor);
+      const r = act(actor, action, chooseAutoTarget(units, actor));
+      return r.ok ? r : pass(actor);
     }
 
     return {
       state: state,
       current: current,
       act: act,
+      pass: pass,
       autoAct: autoAct,
       getUnit: function (id) { return units.find(function (u) { return u.id === id; }) || null; },
     };
@@ -221,6 +241,7 @@
   }
 
   const Battle = {
+    WAIT: WAIT,
     createUnit: createUnit,
     calcDamage: calcDamage,
     canUseAction: canUseAction,

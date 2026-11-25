@@ -122,7 +122,10 @@
     UI.wait(D.timing.beforeEnemyAction)
       .then(function () {
         if (token !== game.battleToken) return null;
-        return showActionResult(battle.autoAct());
+        let r = battle.autoAct();
+        // 抜け道：万一失敗しても「様子を見る」でターンを進め、同じ手番で止まり続けないようにする
+        if (!r.ok && !battle.state.over) r = battle.pass(actor);
+        return showActionResult(r);
       })
       .then(function () { return UI.wait(D.timing.afterAction); })
       .then(function () { if (token === game.battleToken) advance(); });
@@ -132,6 +135,10 @@
   function showActionResult(r) {
     if (!r || !r.ok) return Promise.resolve();
     const actor = game.battle.getUnit(r.actorId);
+    if (r.actionType === 'wait') {
+      UI.log(actor.name + 'は様子を見ている…', 'miss');
+      return UI.wait(D.timing.hitAnimation);
+    }
     const target = game.battle.getUnit(r.targetId);
     UI.log(actor.name + (r.actionType === 'attack' ? 'の攻撃！' : 'の' + r.actionName + '！'));
     if (r.effective) UI.playHit(target.side);
