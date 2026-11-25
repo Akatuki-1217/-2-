@@ -88,22 +88,9 @@
     ch.mp = eff.mp;
   }
 
-  /** 獲得済みの魔法・スキルを戦闘用の行動に変換する（先頭は通常攻撃） */
-  function getBattleActions(ch, data) {
-    const actions = [Object.assign({}, data.normalAttack)];
-    ch.skills.forEach(function (id) {
-      const s = data.skills[id];
-      if (!s || (s.type !== 'active' && s.type !== 'magic')) return;
-      actions.push({
-        id: id,
-        name: s.name,
-        type: s.type,
-        power: s.power,
-        mpCost: s.mpCost || 0,
-        cooldown: s.cooldown || 0,
-      });
-    });
-    return actions;
+  /** 戦闘で使う行動のID（先頭は通常攻撃、続いて獲得済みのスキル）。戦闘用の行動は Battle.buildActions で作る */
+  function getBattleActionIds(ch, data) {
+    return [data.normalAttack.id].concat(ch.skills);
   }
 
   // ---- 経験値・Lvアップ ----
@@ -236,7 +223,7 @@
     getPassiveBonus: getPassiveBonus,
     getEffectiveStats: getEffectiveStats,
     fullHeal: fullHeal,
-    getBattleActions: getBattleActions,
+    getBattleActionIds: getBattleActionIds,
     expToNext: expToNext,
     rollStatGains: rollStatGains,
     applyStatGains: applyStatGains,

@@ -20,12 +20,11 @@ function makePlayerUnit(ch, data) {
   return Battle.createUnit({
     id: 'player', name: ch.name, side: 'ally', controller: 'player',
     stats: Growth.getEffectiveStats(ch, data), hp: ch.hp, mp: ch.mp,
-    actions: Growth.getBattleActions(ch, data),
+    actions: Battle.buildActions(Growth.getBattleActionIds(ch, data), data),
   });
 }
 function makeEnemyUnit(data) {
-  const e = data.enemies[data.battle.enemyId];
-  return Battle.createUnit({ id: 'enemy', name: e.name, side: 'enemy', stats: e.stats, actions: [data.normalAttack] });
+  return Battle.createEnemyUnit(data, data.battle.enemyId, { id: 'enemy' });
 }
 
 /** プレイヤーは policy(player, enemy, battle) で行動を選ぶ。敵は自動 */
@@ -146,6 +145,12 @@ console.log('■ 戦闘');
     Battle.createUnit({ id: 'e', name: 'E', side: 'enemy', stats: { hp: 30, mp: 0, atk: 10, def: 0, matk: 0, mdef: 0, spd: 9 }, actions: [strike] }),
   ]);
   check('待機する敵とも決着までたどり着く', sim.winner === 'ally' && sim.turns === 3, sim);
+}
+{
+  const e = Battle.createEnemyUnit(DATA, 'soldier');
+  check('敵ユニットは data.js の定義から作られる（能力値・行動・報酬）',
+    e.stats.hp === 30 && e.actions.length === 1 && e.actions[0].id === 'attack' && e.reward.exp === 10 && e.reward.sp === 1, e);
+  check('戦闘用の行動にパッシブは含めない', Battle.buildActions(['attack', 'fire', 'strength'], DATA).map(function (a) { return a.id; }).join(',') === 'attack,fire');
 }
 
 console.log('■ 成長・拠点');

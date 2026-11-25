@@ -3,7 +3,7 @@
  * ダメージ・行動順・撃破判定・クールタイムを扱う。
  * 自キャラ専用／敵専用の書き方はせず、すべて「ユニット」同士で動く。
  *
- * ユニット: { id, name, side, controller, stats:{hp,mp,atk,def,matk,mdef,spd}, hp, mp, actions:[], cooldowns:{} }
+ * ユニット: { id, name, side, controller, stats:{hp,mp,atk,def,matk,mdef,spd}, hp, mp, actions:[], cooldowns:{}, reward }
  *   stats.hp / stats.mp は最大値、hp / mp は現在値。
  * 行動(action): { id, name, type:'attack'|'active'|'magic', power, mpCost, cooldown }
  */
@@ -27,7 +27,38 @@
       mp: spec.mp != null ? spec.mp : stats.mp,
       actions: (spec.actions || []).slice(),
       cooldowns: {},
+      reward: spec.reward ? Object.assign({}, spec.reward) : null, // 倒されたときの報酬（なければ null）
     };
+  }
+
+  // ---- data.js の定義から戦闘用の行動・ユニットを作る（data は引数で受け取る） ----
+
+  /** 行動IDを戦闘用の行動にする。通常攻撃のIDなら通常攻撃、アクティブ／魔法ならそのスキル。それ以外は null */
+  function buildAction(id, data) {
+    if (id === data.normalAttack.id) return Object.assign({}, data.normalAttack);
+    const s = data.skills[id];
+    if (!s || (s.type !== 'active' && s.type !== 'magic')) return null;
+    return { id: id, name: s.name, type: s.type, power: s.power, mpCost: s.mpCost || 0, cooldown: s.cooldown || 0 };
+  }
+
+  /** 行動IDの並びを戦闘用の行動の並びにする（パッシブなど戦闘で使えないものは除く） */
+  function buildActions(ids, data) {
+    return ids.map(function (id) { return buildAction(id, data); }).filter(Boolean);
+  }
+
+  /** data.enemies の定義から敵ユニットを作る。spec で id などを上書きできる（複数体を出すとき用） */
+  function createEnemyUnit(data, enemyId, spec) {
+    const def = data.enemies[enemyId];
+    if (!def) throw new Error('敵 ' + enemyId + ' が data.js にありません');
+    return createUnit(Object.assign({
+      id: enemyId,
+      name: def.name,
+      side: 'enemy',
+      controller: 'auto',
+      stats: def.stats,
+      actions: buildActions(def.actions, data),
+      reward: def.reward,
+    }, spec));
   }
 
   // 魔法は魔法攻撃力／魔法防御力、それ以外（通常攻撃・アクティブスキル）は攻撃力／防御力
@@ -255,6 +286,9 @@
 
   const Battle = {
     createUnit: createUnit,
+    buildAction: buildAction,
+    buildActions: buildActions,
+    createEnemyUnit: createEnemyUnit,
     calcDamage: calcDamage,
     canUseAction: canUseAction,
     executeAction: executeAction,

@@ -69,20 +69,12 @@
 
   function startBattle() {
     const ch = game.ch;
-    const enemyDef = D.enemies[D.battle.enemyId];
     game.player = B.createUnit({
       id: 'player', name: ch.name, side: 'ally', controller: 'player',
       stats: eff(), hp: ch.hp, mp: ch.mp,
-      actions: G.getBattleActions(ch, D),
+      actions: B.buildActions(G.getBattleActionIds(ch, D), D), // 先頭は通常攻撃
     });
-    game.enemy = B.createUnit({
-      id: 'enemy', name: enemyDef.name, side: 'enemy', controller: 'auto',
-      stats: enemyDef.stats,
-      actions: enemyDef.actions.map(function (id) {
-        return id === 'attack' ? Object.assign({}, D.normalAttack) : G.getBattleActions({ skills: [id] }, D)[1];
-      }),
-    });
-    game.enemy.reward = enemyDef.reward;
+    game.enemy = B.createEnemyUnit(D, D.battle.enemyId, { id: 'enemy' });
     game.battle = B.createBattle([game.player, game.enemy], { tieFirstSide: D.battle.tieFirstSide });
     game.battleToken += 1;
     game.busy = true;
@@ -178,7 +170,7 @@
 
     if (game.battle.state.winner === 'ally') {
       UI.vanish('enemy'); // 敵が消える
-      game.lastResult = G.grantReward(ch, game.enemy.reward, D);
+      game.lastResult = G.grantReward(ch, game.enemy.reward || {}, D);
       UI.wait(D.timing.victoryToResult).then(function () { if (token === game.battleToken) goResult(); });
     } else {
       const d = G.applyDefeat(ch, D); // 経験値0・HP/MP全回復（Lv・SP・スキルはそのまま）
