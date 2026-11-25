@@ -284,6 +284,37 @@ console.log('■ 成長・拠点');
   check('腕力込みの通常攻撃は8ダメージ', Battle.calcDamage(p, e, DATA.normalAttack).damage === 8);
 }
 
+{
+  // セーブ：保存して読み直すと同じ状態（拠点から再開なのでHP・MPは全回復）
+  const ch = Growth.createCharacter(DATA);
+  Growth.grantReward(ch, { exp: 35, sp: 3 }, DATA, Growth.seededRandom(5));
+  Growth.acquireSkill(ch, 'strength', DATA);
+  ch.cleared.push('training');
+  ch.hp = 1;
+  const json = JSON.stringify(Growth.serialize(ch));
+  const back = Growth.deserialize(JSON.parse(json), DATA);
+  check('セーブして読み直すとLv・経験値・SP・能力値・スキル・クリア状況が戻る',
+    back && back.level === ch.level && back.exp === ch.exp && back.sp === ch.sp
+    && JSON.stringify(back.base) === JSON.stringify(ch.base)
+    && back.skills.join() === ch.skills.join() && back.cleared.join() === 'training');
+  check('読み直すとHP・MPは全回復', back.hp === Growth.getEffectiveStats(back, DATA).hp && back.mp === Growth.getEffectiveStats(back, DATA).mp);
+
+  const broken = [null, 'x', {}, { version: 99 }, Object.assign(JSON.parse(json), { level: -1 }), Object.assign(JSON.parse(json), { base: { hp: 'a' } })];
+  check('壊れたセーブデータは読まない（null）', broken.every(function (b) { return Growth.deserialize(b, DATA) === null; }));
+  const stale = Object.assign(JSON.parse(json), { skills: ['fire', 'deleted_skill'], cleared: ['training', 'gone'] });
+  const st = Growth.deserialize(stale, DATA);
+  check('data.js から消えたスキル・出撃先は捨てる', st.skills.indexOf('deleted_skill') < 0 && st.cleared.join() === 'training');
+}
+{
+  // 出撃先：前をクリアすると次が開く
+  const ch = Growth.createCharacter(DATA);
+  const enc = function (id) { return Growth.findEncounter(id, DATA); };
+  check('最初は訓練場だけ行ける', Growth.getEncounterState(ch, enc('training')) === 'open' && Growth.getEncounterState(ch, enc('woods')) === 'locked');
+  const c = Growth.markCleared(ch, 'training', DATA);
+  check('訓練場をクリアすると森の小道が開く', c.firstClear && c.unlocked[0].id === 'woods' && Growth.getEncounterState(ch, enc('woods')) === 'open');
+  check('2回目のクリアは初回扱いしない', Growth.markCleared(ch, 'training', DATA).firstClear === false && ch.cleared.length === 1);
+}
+
 console.log('■ 設計');
 {
   const w = Growth.validateData(DATA);

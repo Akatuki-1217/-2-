@@ -274,6 +274,50 @@
     return 'available';
   }
 
+  // ---- セーブデータ ----
+
+  const SAVE_VERSION = 1;
+
+  /** キャラクターを保存用の素のオブジェクトにする */
+  function serialize(ch) {
+    return {
+      version: SAVE_VERSION,
+      level: ch.level,
+      exp: ch.exp,
+      sp: ch.sp,
+      base: Object.assign({}, ch.base),
+      skills: ch.skills.slice(),
+      cleared: ch.cleared.slice(),
+    };
+  }
+
+  /**
+   * 保存データからキャラクターを復元する。壊れている・形が違うときは null。
+   * 拠点から再開するので HP・MP は全回復。data.js から消えたスキル・出撃先は捨てる。
+   */
+  function deserialize(saved, data) {
+    const isCount = function (v, min) { return typeof v === 'number' && isFinite(v) && Math.floor(v) === v && v >= min; };
+    if (!saved || typeof saved !== 'object' || saved.version !== SAVE_VERSION) return null;
+    if (!isCount(saved.level, 1) || !isCount(saved.exp, 0) || !isCount(saved.sp, 0)) return null;
+    if (!saved.base || typeof saved.base !== 'object' || !Array.isArray(saved.skills) || !Array.isArray(saved.cleared)) return null;
+    const ok = data.statKeys.every(function (k) { return isCount(saved.base[k], 0); });
+    if (!ok) return null;
+
+    const ch = createCharacter(data);
+    ch.level = saved.level;
+    ch.exp = saved.exp;
+    ch.sp = saved.sp;
+    data.statKeys.forEach(function (k) { ch.base[k] = saved.base[k]; });
+    saved.skills.forEach(function (id) {
+      if (data.skills[id] && ch.skills.indexOf(id) < 0) ch.skills.push(id);
+    });
+    ch.cleared = saved.cleared.filter(function (id, i) {
+      return !!findEncounter(id, data) && saved.cleared.indexOf(id) === i;
+    });
+    fullHeal(ch, data);
+    return ch;
+  }
+
   // ---- データ検証 ----
 
   /**
@@ -357,6 +401,8 @@
     checkAcquire: checkAcquire,
     acquireSkill: acquireSkill,
     getNodeState: getNodeState,
+    serialize: serialize,
+    deserialize: deserialize,
     validateData: validateData,
     MESSAGES: MESSAGES,
   };
