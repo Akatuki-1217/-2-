@@ -43,12 +43,12 @@
   }
 
   // ---- 拠点 ----
-  function renderBase(ch, eff, data) {
+  function renderBase(ch, eff, expToNext) {
     $('base-summary').innerHTML =
       '<div class="lv">Lv ' + ch.level + '</div>'
       + bar('hp', 'HP', ch.hp, eff.hp)
       + bar('mp', 'MP', ch.mp, eff.mp)
-      + '<div class="row"><span>経験値</span><span>' + ch.exp + ' / ' + Growth.expToNext(ch.level, data.growth) + '</span></div>'
+      + '<div class="row"><span>経験値</span><span>' + ch.exp + ' / ' + expToNext + '</span></div>'
       + '<div class="row"><span>SP</span><span>' + ch.sp + '</span></div>';
   }
 
@@ -177,11 +177,11 @@
   }
 
   // ---- 本（ステータス） ----
-  function renderStatus(ch, eff, bonus, data) {
+  function renderStatus(ch, eff, bonus, expToNext, data) {
     const b = function (k) { return bonus[k] > 0 ? '<span class="bonus">(+' + bonus[k] + ')</span>' : ''; };
     const rows = [
       ['Lv', ch.level],
-      ['経験値', ch.exp + ' / ' + Growth.expToNext(ch.level, data.growth)],
+      ['経験値', ch.exp + ' / ' + expToNext],
       ['HP', ch.hp + ' / ' + eff.hp + b('hp')],
       ['MP', ch.mp + ' / ' + eff.mp + b('mp')],
     ];
@@ -211,12 +211,13 @@
     return t;
   }
 
-  function renderTree(ch, data, sel) {
+  /** states[row][col] は 'owned' | 'available' | 'locked'（main.js が判定して渡す） */
+  function renderTree(ch, data, sel, states) {
     $('tree-sp').textContent = 'SP ' + ch.sp;
     $('tree-body').innerHTML = data.skillTree.map(function (branch, r) {
       const nodes = branch.nodes.map(function (node, c) {
         const s = data.skills[node.skill];
-        const state = Growth.getNodeState(ch, node.skill, data);
+        const state = states[r][c];
         const cls = ['node', state];
         if (sel.row === r && sel.col === c) cls.push('selected');
         return '<button type="button" class="' + cls.join(' ') + '" data-row="' + r + '" data-col="' + c + '">'

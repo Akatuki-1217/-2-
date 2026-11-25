@@ -25,7 +25,7 @@ function makePlayerUnit(ch, data) {
 }
 function makeEnemyUnit(data) {
   const e = data.enemies[data.battle.enemyId];
-  return Battle.createUnit({ id: 'enemy', name: e.name, side: 'enemy', stats: e.stats, actions: [data.normalAttack] });
+  return Battle.createUnit({ id: 'enemy', name: e.name, side: 'enemy', stats: e.stats, actions: Growth.toActions(e.actions, data) });
 }
 
 /** プレイヤーは policy(player, enemy, battle) で行動を選ぶ。敵は自動 */
@@ -43,7 +43,7 @@ function fight(ch, data, policy) {
   ch.hp = p.hp; ch.mp = p.mp;
   return { winner: b.state.winner, turns: b.state.turn, results: results, player: p, enemy: e };
 }
-const attackOnly = function (p) { return p.actions[0]; };
+const attackOnly = function (p) { return Battle.findAction(p, 'attack'); };
 
 console.log('■ 戦闘');
 {
@@ -64,7 +64,7 @@ console.log('■ 戦闘');
   const ch = Growth.createCharacter(DATA);
   const bestPolicy = function (p) {
     const fire = p.actions.find(function (a) { return a.id === 'fire'; });
-    return Battle.canUseAction(p, fire).ok ? fire : p.actions[0];
+    return Battle.canUseAction(p, fire).ok ? fire : attackOnly(p);
   };
   const w = [fight(ch, DATA, bestPolicy).winner, fight(ch, DATA, bestPolicy).winner, fight(ch, DATA, bestPolicy).winner];
   check('ファイアを使っても「2連勝・3戦目は負け」', w.join(',') === 'ally,ally,enemy', w);
@@ -92,7 +92,7 @@ console.log('■ 戦闘');
   for (let t = 1; t <= 4; t++) {
     b.current();
     usable.push(Battle.canUseAction(p, strike).ok);
-    const r = b.act(p, Battle.canUseAction(p, strike).ok ? strike : p.actions[0], e);
+    const r = b.act(p, Battle.canUseAction(p, strike).ok ? strike : attackOnly(p), e);
     if (t === 1) check('強打は10ダメージ', r.damage === 10, r.damage);
     b.autoAct();
   }
@@ -111,7 +111,7 @@ console.log('■ 戦闘');
     b2.current();
     u2.push(Battle.canUseAction(p2, slash).ok);
     cdShown.push(Battle.getCooldown(p2, 'full_slash'));
-    b2.act(p2, Battle.canUseAction(p2, slash).ok ? slash : p2.actions[0], e2);
+    b2.act(p2, Battle.canUseAction(p2, slash).ok ? slash : attackOnly(p2), e2);
     b2.autoAct();
   }
   check('CT2: 使える/使えない/使えない/使える', u2.join(',') === 'true,false,false,true', u2);
@@ -232,13 +232,31 @@ console.log('■ 成長・拠点');
 
 console.log('■ 設計');
 {
+  const w = Growth.validateData(DATA);
+  check('data.js の検証で警告0件', w.length === 0, w);
+  const bad = clone(DATA);
+  bad.skills.fire.mpCost = 99;
+  bad.enemies.soldier.actions = ['attack', 'strength', 'no_such'];
+  check('範囲外の値・行動にならないIDは警告される', Growth.validateData(bad).length === 3, Growth.validateData(bad));
+}
+{
+  // 行動の作り方は1つ：通常攻撃・魔法・スキルを変換。パッシブや存在しないIDは null
+  check('toAction: 通常攻撃', Growth.toAction('attack', DATA).id === 'attack');
+  check('toAction: 魔法', Growth.toAction('fire', DATA).type === 'magic');
+  check('toAction: パッシブ・存在しないIDは null', Growth.toAction('strength', DATA) === null && Growth.toAction('xxx', DATA) === null);
+  check('toActions は null を混ぜない', Growth.toActions(['attack', 'strength', 'xxx', 'fire'], DATA).length === 2);
+  // 通常攻撃は並び順ではなくIDで探す
+  const u = Battle.createUnit({ id: 'u', name: 'U', side: 'ally', stats: DATA.player.stats, actions: Growth.toActions(['fire', 'attack'], DATA) });
+  check('通常攻撃はIDで探す（先頭でなくてもよい）', Battle.findAction(u, 'attack').id === 'attack');
+}
+{
   // data.js の数値を書き換えるだけで強さが変わる
   const data2 = clone(DATA);
   data2.enemies.soldier.stats.hp = 28;
   const ch = Growth.createCharacter(data2);
   const fire = function (p) {
     const f = p.actions.find(function (a) { return a.id === 'fire'; });
-    return Battle.canUseAction(p, f).ok ? f : p.actions[0];
+    return Battle.canUseAction(p, f).ok ? f : attackOnly(p);
   };
   const r = fight(ch, data2, fire);
   check('試験兵HP28ならファイアで4ターン目に勝てる', r.winner === 'ally' && r.turns === 4, r.turns);

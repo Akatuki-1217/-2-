@@ -43,6 +43,11 @@
     return value > 0 ? { damage: value, effective: true } : { damage: 0, effective: false };
   }
 
+  /** ユニットが持つ行動をIDで探す（並び順に頼らない） */
+  function findAction(unit, actionId) {
+    return unit.actions.find(function (a) { return a.id === actionId; }) || null;
+  }
+
   function getCooldown(unit, actionId) {
     return unit.cooldowns[actionId] || 0;
   }
@@ -244,6 +249,7 @@
     WAIT: WAIT,
     createUnit: createUnit,
     calcDamage: calcDamage,
+    findAction: findAction,
     canUseAction: canUseAction,
     executeAction: executeAction,
     getCooldown: getCooldown,

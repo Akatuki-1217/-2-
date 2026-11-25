@@ -38,13 +38,13 @@
 
   function goBase() {
     game.screen = 'base';
-    UI.renderBase(game.ch, eff(), D);
+    UI.renderBase(game.ch, eff(), G.expToNext(game.ch.level, D.growth));
     UI.showScreen('base');
   }
 
   function goBook() {
     game.screen = 'book';
-    UI.renderStatus(game.ch, eff(), G.getPassiveBonus(game.ch, D), D);
+    UI.renderStatus(game.ch, eff(), G.getPassiveBonus(game.ch, D), G.expToNext(game.ch.level, D.growth), D);
     UI.showScreen('book');
   }
 
@@ -52,7 +52,7 @@
     game.screen = 'tree';
     game.confirmSkill = null;
     UI.hideConfirm();
-    UI.renderTree(game.ch, D, game.treeSel);
+    UI.renderTree(game.ch, D, game.treeSel, nodeStates());
     UI.showScreen('tree');
   }
 
@@ -77,9 +77,7 @@
     game.enemy = B.createUnit({
       id: 'enemy', name: enemyDef.name, side: 'enemy', controller: 'auto',
       stats: enemyDef.stats,
-      actions: enemyDef.actions.map(function (id) {
-        return id === 'attack' ? Object.assign({}, D.normalAttack) : G.getBattleActions({ skills: [id] }, D)[1];
-      }),
+      actions: G.toActions(enemyDef.actions, D),
     });
     game.enemy.reward = enemyDef.reward;
     game.battle = B.createBattle([game.player, game.enemy], { tieFirstSide: D.battle.tieFirstSide });
@@ -238,6 +236,13 @@
     if (it && it.usable) playerAct(it.action);
   }
 
+  /** スキルツリーの各ノードの表示状態（UIに渡す） */
+  function nodeStates() {
+    return D.skillTree.map(function (branch) {
+      return branch.nodes.map(function (node) { return G.getNodeState(game.ch, node.skill, D); });
+    });
+  }
+
   // ================= 結果画面 =================
 
   function resultButtons() {
@@ -265,7 +270,7 @@
     game.treeSel = { row: row, col: col };
     const node = D.skillTree[row].nodes[col];
     const check = G.checkAcquire(game.ch, node.skill, D);
-    UI.renderTree(game.ch, D, game.treeSel);
+    UI.renderTree(game.ch, D, game.treeSel, nodeStates());
     if (!check.ok) {
       UI.toast(check.message, D.timing.toast); // 例外は確認表示を出さずにメッセージ
       return;
@@ -287,7 +292,7 @@
     cancelConfirm();
     if (r.ok) UI.toast(D.skills[id].name + 'を獲得した！', D.timing.toast);
     else UI.toast(r.message, D.timing.toast);
-    UI.renderTree(game.ch, D, game.treeSel);
+    UI.renderTree(game.ch, D, game.treeSel, nodeStates());
   }
 
   function cancelConfirm() {
@@ -302,7 +307,7 @@
     let col = Math.min(game.treeSel.col, len - 1);
     if (dCol) col = (col + dCol + len) % len;
     game.treeSel = { row: row, col: col };
-    UI.renderTree(game.ch, D, game.treeSel);
+    UI.renderTree(game.ch, D, game.treeSel, nodeStates());
   }
 
   // ================= 入力 =================
@@ -318,7 +323,7 @@
     const btn = e.target.closest('[data-cmd]');
     if (!btn || btn.disabled) return;
     const cmd = btn.dataset.cmd;
-    if (cmd === 'attack') playerAct(game.player.actions[0]);
+    if (cmd === 'attack') playerAct(B.findAction(game.player, D.normalAttack.id));
     else openList(cmd);
   });
   $('action-items').addEventListener('click', function (e) {
@@ -354,7 +359,7 @@
       }
       const handled = ['a', 'w', 's', 'Enter', 'Escape', 'ArrowUp', 'ArrowDown'].indexOf(k) >= 0;
       if (game.busy) return handled; // 入力ロック中はキーを飲み込むだけ
-      if (k === 'a') playerAct(game.player.actions[0]);
+      if (k === 'a') playerAct(B.findAction(game.player, D.normalAttack.id));
       else if (k === 'w') openList('magic');
       else if (k === 's') openList('skill');
       else if (game.listMode) {
@@ -421,28 +426,7 @@
     if (handler && handler(k)) e.preventDefault();
   });
 
-  // ================= データ検証（第7章の範囲外なら警告） =================
-
-  function validateData() {
-    const inRange = function (v, r) { return v >= r[0] && v <= r[1]; };
-    Object.keys(D.skills).forEach(function (id) {
-      const s = D.skills[id];
-      const rank = D.ranks[s.rank];
-      const warn = function (msg) { console.warn('[data.js] ' + s.name + '（' + s.rank + '）: ' + msg); };
-      if (!rank) { warn('ランクが定義されていません'); return; }
-      if (s.sp !== rank.sp) warn('必要SP ' + s.sp + ' がランク表（' + rank.sp + '）と違います');
-      if (s.type === 'passive') {
-        Object.keys(s.bonus || {}).forEach(function (k) {
-          if (s.bonus[k] !== rank.passive) warn('上昇量 ' + s.bonus[k] + ' がランク表（+' + rank.passive + '）と違います');
-        });
-        return;
-      }
-      if (!inRange(s.power, rank.power)) warn('威力倍率 ' + s.power + ' が範囲外です');
-      if (!inRange(s.mpCost, rank.mpCost)) warn('MP消費 ' + s.mpCost + ' が範囲外です');
-      if (s.type === 'active' && !inRange(s.cooldown || 0, rank.cooldown)) warn('クールタイム ' + s.cooldown + ' が範囲外です');
-    });
-  }
-
-  validateData();
+  // data.js の検証（第7章のランク表から外れた値などを警告）
+  G.validateData(D).forEach(function (w) { console.warn('[data.js] ' + w); });
   goBase();
 })();

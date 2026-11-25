@@ -88,22 +88,35 @@
     ch.mp = eff.mp;
   }
 
-  /** 獲得済みの魔法・スキルを戦闘用の行動に変換する（先頭は通常攻撃） */
+  // 戦闘で「行動」になる種類（パッシブは常時発動なので行動にならない）
+  const ACTION_TYPES = ['active', 'magic'];
+
+  /**
+   * 行動ID（'attack' または data.skills のキー）を戦闘用の行動に変換する。
+   * 敵・味方の両方がこれを使う。行動にならないID（パッシブ・存在しないID）は null。
+   */
+  function toAction(id, data) {
+    if (id === data.normalAttack.id) return Object.assign({}, data.normalAttack);
+    const s = data.skills[id];
+    if (!s || ACTION_TYPES.indexOf(s.type) < 0) return null;
+    return {
+      id: id,
+      name: s.name,
+      type: s.type,
+      power: s.power,
+      mpCost: s.mpCost || 0,
+      cooldown: s.cooldown || 0,
+    };
+  }
+
+  /** 行動IDの一覧を行動の配列にする（行動にならないIDは除く） */
+  function toActions(ids, data) {
+    return ids.map(function (id) { return toAction(id, data); }).filter(Boolean);
+  }
+
+  /** 獲得済みの魔法・スキルを戦闘用の行動に変換する（通常攻撃を必ず含む） */
   function getBattleActions(ch, data) {
-    const actions = [Object.assign({}, data.normalAttack)];
-    ch.skills.forEach(function (id) {
-      const s = data.skills[id];
-      if (!s || (s.type !== 'active' && s.type !== 'magic')) return;
-      actions.push({
-        id: id,
-        name: s.name,
-        type: s.type,
-        power: s.power,
-        mpCost: s.mpCost || 0,
-        cooldown: s.cooldown || 0,
-      });
-    });
-    return actions;
+    return toActions([data.normalAttack.id].concat(ch.skills), data);
   }
 
   // ---- 経験値・Lvアップ ----
@@ -228,6 +241,53 @@
     return 'available';
   }
 
+  // ---- データ検証 ----
+
+  /**
+   * data.js の中身を確かめ、問題の一覧（文字列の配列）を返す。問題がなければ空配列。
+   *  - 第7章のランク表から外れた値
+   *  - スキルツリー・敵が存在しないスキルを参照していないか
+   */
+  function validateData(data) {
+    const warnings = [];
+    const inRange = function (v, r) { return v >= r[0] && v <= r[1]; };
+
+    Object.keys(data.skills).forEach(function (id) {
+      const s = data.skills[id];
+      const rank = data.ranks[s.rank];
+      const warn = function (msg) { warnings.push(s.name + '（' + s.rank + '）: ' + msg); };
+      if (!rank) { warn('ランクが定義されていません'); return; }
+      if (s.sp !== rank.sp) warn('必要SP ' + s.sp + ' がランク表（' + rank.sp + '）と違います');
+      if (s.type === 'passive') {
+        Object.keys(s.bonus || {}).forEach(function (k) {
+          if (s.bonus[k] !== rank.passive) warn('上昇量 ' + s.bonus[k] + ' がランク表（+' + rank.passive + '）と違います');
+        });
+        return;
+      }
+      if (!inRange(s.power, rank.power)) warn('威力倍率 ' + s.power + ' が範囲外です');
+      if (!inRange(s.mpCost, rank.mpCost)) warn('MP消費 ' + s.mpCost + ' が範囲外です');
+      if (s.type === 'active' && !inRange(s.cooldown || 0, rank.cooldown)) warn('クールタイム ' + s.cooldown + ' が範囲外です');
+    });
+
+    data.skillTree.forEach(function (branch) {
+      branch.nodes.forEach(function (node) {
+        if (!data.skills[node.skill]) warnings.push('スキルツリー「' + branch.name + '」: ' + node.skill + ' がありません');
+        if (node.requires && !findNode(data.skillTree, node.requires)) {
+          warnings.push('スキルツリー「' + branch.name + '」: 前のスキル ' + node.requires + ' がツリーにありません');
+        }
+      });
+    });
+
+    Object.keys(data.enemies).forEach(function (id) {
+      const e = data.enemies[id];
+      (e.actions || []).forEach(function (a) {
+        if (!toAction(a, data)) warnings.push('敵「' + e.name + '」: ' + a + ' は行動として使えません');
+      });
+    });
+
+    return warnings;
+  }
+
   const Growth = {
     setRandom: setRandom,
     seededRandom: seededRandom,
@@ -236,6 +296,8 @@
     getPassiveBonus: getPassiveBonus,
     getEffectiveStats: getEffectiveStats,
     fullHeal: fullHeal,
+    toAction: toAction,
+    toActions: toActions,
     getBattleActions: getBattleActions,
     expToNext: expToNext,
     rollStatGains: rollStatGains,
@@ -247,6 +309,7 @@
     checkAcquire: checkAcquire,
     acquireSkill: acquireSkill,
     getNodeState: getNodeState,
+    validateData: validateData,
     MESSAGES: MESSAGES,
   };
 
