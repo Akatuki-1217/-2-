@@ -183,7 +183,7 @@ html, body {
 .unit-panel.down { opacity: 0.4; }
 
 /* 攻撃先を選ぶとき */
-.unit-panel.targetable { cursor: pointer; border-color: var(--danger); }
+.unit-panel.targetable { cursor: pointer; border-color: var(--danger); touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .unit-panel.targetable.selected { outline: 3px solid var(--selected); outline-offset: 1px; }
 .target-prompt {
   border: 1px solid var(--border);
@@ -258,6 +258,7 @@ html, body {
   padding: 20px;
   text-align: center;
 }
+#defeat-overlay { cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .defeat-title { font-size: 28px; font-weight: 700; color: var(--danger); margin: 0 0 8px; }
 
 .confirm-box { text-align: left; }

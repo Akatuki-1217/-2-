@@ -8,9 +8,10 @@
 
 const path = require('path');
 
-let chromium;
+let chromium, devices;
 try {
   chromium = require('playwright').chromium;
+  devices = require('playwright').devices;
 } catch (e) {
   console.log('Playwright が見つからないため、画面操作のテストを飛ばしました');
   process.exit(0);
@@ -26,11 +27,46 @@ function check(name, cond, detail) {
 
 (async function main() {
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
-  const page = await browser.newPage({ viewport: { width: 375, height: 700 } }); // スマホ縦画面
   const errors = [];
-  page.on('pageerror', function (e) { errors.push(String(e)); });
-  page.on('console', function (m) { if (m.type() === 'error' || m.type() === 'warning') errors.push(m.text()); });
-  page.on('dialog', function (d) { d.accept(); }); // 「最初から」の確認は OK を押す
+  let page;
+
+  /** 新しいブラウザ環境（保存データは空）で開く。contextOpts で端末を指定する */
+  async function usePage(contextOpts) {
+    const ctx = await browser.newContext(contextOpts);
+    page = await ctx.newPage();
+    page.on('pageerror', function (e) { errors.push(String(e)); });
+    page.on('console', function (m) { if (m.type() === 'error' || m.type() === 'warning') errors.push(m.text()); });
+    page.on('dialog', function (d) { d.accept(); }); // 「最初から」の確認は OK を押す
+  }
+
+  /**
+   * スマホでの見た目の確認：横にはみ出さない・ボタンは高さ44px以上・下のボタンが画面内・キー案内は出さない。
+   * 問題の一覧を返す（なければ空配列）。
+   */
+  function auditMobile() {
+    return page.evaluate(function () {
+      const problems = [];
+      const scr = document.querySelector('.screen.active');
+      if (document.documentElement.scrollWidth > window.innerWidth || scr.scrollWidth > scr.clientWidth) problems.push('横にはみ出している');
+      scr.querySelectorAll('button, .unit-panel.targetable').forEach(function (b) {
+        const r = b.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return; // 隠れている
+        if (r.height < 44) problems.push((b.id || b.className) + ' の高さ ' + Math.round(r.height) + 'px');
+        if (r.right > window.innerWidth + 0.5 || r.left < -0.5) problems.push((b.id || b.className) + ' が画面外');
+      });
+      const bottom = scr.querySelector('.bottom-actions, .command-area');
+      if (bottom) {
+        const r = bottom.getBoundingClientRect();
+        if (r.bottom > window.innerHeight + 1) problems.push('下のボタンが画面からはみ出している');
+      }
+      if (Array.prototype.some.call(scr.querySelectorAll('.key'), function (k) { return getComputedStyle(k).display !== 'none'; })) {
+        problems.push('スマホでキー案内が出ている');
+      }
+      return problems.map(function (p) { return Game.screen + ': ' + p; });
+    });
+  }
+
+  await usePage({ viewport: { width: 375, height: 700 } });
 
   // 演出の待ち時間を短くして速く進める（data.js の値を書き換えるだけで反映される）
   async function open() {
@@ -137,8 +173,68 @@ function check(name, cond, detail) {
     return Game.ch.level === 1 && Game.ch.exp === 0 && Game.ch.cleared.length === 0;
   }));
 
-  check('コンソールにエラー・警告が出ない', errors.length === 0, errors);
   await page.evaluate(function () { localStorage.clear(); });
+
+  console.log('■ スマホ（タップだけ）で「出撃→戦闘→結果→拠点→スキル獲得」');
+  await usePage(devices['iPhone SE']); // 320×568・タッチ操作
+  await open();
+  const layout = [];
+  layout.push.apply(layout, await auditMobile());
+  await page.tap('#btn-sortie');
+  layout.push.apply(layout, await auditMobile());
+  await page.locator('.sortie-item').nth(0).tap();
+  await waitUntil(function (s) { return s === 'input'; });
+  layout.push.apply(layout, await auditMobile());
+  await page.tap('[data-cmd=magic]');
+  layout.push.apply(layout, await auditMobile());
+  await page.tap('#btn-list-back');
+  let ms;
+  while ((ms = await waitUntil(function (s) { return s !== 'busy'; })) === 'input') await page.tap('[data-cmd=attack]');
+  check('タップだけで勝って結果画面へ', ms === 'result', ms);
+  layout.push.apply(layout, await auditMobile());
+  await page.tap('#btn-to-base');
+  await page.tap('#btn-book');
+  layout.push.apply(layout, await auditMobile());
+  await page.tap('#btn-open-tree');
+  check('本からスキルツリーを開ける', await state() === 'tree' && await page.locator('.node').count() > 0);
+  layout.push.apply(layout, await auditMobile());
+  await page.locator('.node').nth(0).tap(); // 強打（SP1）
+  layout.push.apply(layout, await auditMobile());
+  await page.tap('#btn-confirm-ok');
+  check('タップでスキルを獲得できる', await page.evaluate(function () { return Game.ch.skills.indexOf('power_strike') >= 0; }));
+  await page.tap('#btn-tree-back');
+  await page.tap('#btn-book-back');
+  await page.tap('#btn-sortie');
+  await page.locator('.sortie-item').nth(1).tap();
+  await waitUntil(function (s) { return s === 'input'; });
+  await page.tap('[data-cmd=attack]');
+  layout.push.apply(layout, await auditMobile());
+  await page.locator('#enemy-row .unit-panel').nth(0).tap();
+  await waitUntil(function (s) { return s !== 'busy'; });
+  check('攻撃先をタップで選べる', await page.evaluate(function () { return Game.units[1].hp < Game.units[1].stats.hp; }));
+  check('幅320pxでもはみ出さず、ボタンは44px以上、下のボタンが画面内', layout.length === 0, layout);
+
+  console.log('■ PC（キーボードだけ）で「出撃→戦闘→結果→拠点→スキル獲得」');
+  await usePage({ viewport: { width: 1280, height: 800 } });
+  await open();
+  await page.keyboard.press('Enter'); // 出撃
+  await page.keyboard.press('Enter'); // 訓練場
+  check('キーボードだけで勝って結果画面へ', await attackUntilEnd() === 'result');
+  await page.keyboard.press('ArrowRight'); // 拠点に戻る を選ぶ
+  await page.keyboard.press('Enter');
+  check('矢印＋Enterで拠点に戻る', await state() === 'base');
+  await page.keyboard.press('Escape'); // 本
+  await page.keyboard.press('Enter'); // スキルツリー
+  check('Esc→Enterでスキルツリー', await state() === 'tree');
+  await page.keyboard.press('Enter'); // 強打を選ぶ
+  await page.keyboard.press('Enter'); // 獲得する
+  check('Enterでスキルを獲得できる', await page.evaluate(function () { return Game.ch.skills.indexOf('power_strike') >= 0; }));
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  check('Esc→Escで拠点に戻る', await state() === 'base');
+  check('PCではキー案内が出る', await page.locator('#btn-sortie .key').isVisible());
+
+  check('コンソールにエラー・警告が出ない', errors.length === 0, errors);
   await browser.close();
 
   console.log(failed === 0 ? '\nすべて成功' : '\n失敗: ' + failed + '件');
