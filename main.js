@@ -465,9 +465,18 @@
     },
   };
 
+  // A/W/S は物理キーの位置（e.code）で判定する。日本語入力ONのときは e.key が 'Process' や
+  // かな文字になり一致しないため
+  const CODE_KEYS = { KeyA: 'a', KeyW: 'w', KeyS: 's' };
+
+  function keyName(e) {
+    if (CODE_KEYS[e.code]) return CODE_KEYS[e.code];
+    return e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  }
+
   document.addEventListener('keydown', function (e) {
     if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
-    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const k = keyName(e);
     const isArrow = k.indexOf('Arrow') === 0;
     if (e.repeat && !isArrow) { // 押しっぱなしによる連続入力は無視
       if (k === 'Enter' || k === 'Escape' || k === 'a' || k === 'w' || k === 's') e.preventDefault();
