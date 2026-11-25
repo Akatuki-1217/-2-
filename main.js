@@ -14,12 +14,15 @@
     screen: 'base',
     // 戦闘
     battle: null,
+    units: [], // 戦闘に出ているユニット（味方・敵）
     player: null,
-    enemy: null,
+    enemyIds: [], // 今の戦闘の敵（data.js の enemies のキー）
     battleToken: 0,
     busy: false, // true の間は戦闘の入力を受け付けない（二重入力防止）
     listMode: null, // 'magic' | 'skill' | null
     listIndex: 0,
+    lastListMode: null, // 攻撃先の選択をやめたときに戻る一覧
+    targeting: null, // 攻撃先を選んでいる間 { action, ids, index, fromList }
     defeatReady: false,
     // 結果画面
     lastResult: null,
@@ -66,32 +69,55 @@
 
   // ================= 戦闘 =================
 
-  function startBattle() {
+  /** 敵IDの配列から敵ユニットを作る。同じ敵が複数いるときは名前に A・B… を付ける */
+  function createEnemyUnits(enemyIds) {
+    const count = {};
+    enemyIds.forEach(function (id) { count[id] = (count[id] || 0) + 1; });
+    const seen = {};
+    return enemyIds.map(function (id, i) {
+      const def = D.enemies[id];
+      seen[id] = (seen[id] || 0) + 1;
+      const suffix = count[id] > 1 ? String.fromCharCode(64 + seen[id]) : ''; // A, B, C…
+      const unit = B.createUnit({
+        id: 'enemy-' + i, name: def.name + suffix, side: 'enemy', controller: 'auto',
+        stats: def.stats, actions: G.toActions(def.actions, D),
+      });
+      unit.enemyId = id;
+      return unit;
+    });
+  }
+
+  const enemies = function () { return game.units.filter(function (u) { return u.side === 'enemy'; }); };
+  const aliveEnemies = function () { return enemies().filter(function (u) { return u.hp > 0; }); };
+
+  function renderUnits() {
+    const t = game.targeting;
+    UI.renderBattleUnits(game.units, t ? { targets: t.ids, selectedId: t.ids[t.index] } : null);
+  }
+
+  function startBattle(enemyIds) {
     const ch = game.ch;
-    const enemyDef = D.enemies[D.battle.enemyId];
+    game.enemyIds = enemyIds;
     game.player = B.createUnit({
       id: 'player', name: ch.name, side: 'ally', controller: 'player',
       stats: eff(), hp: ch.hp, mp: ch.mp,
       actions: G.getBattleActions(ch, D),
     });
-    game.enemy = B.createUnit({
-      id: 'enemy', name: enemyDef.name, side: 'enemy', controller: 'auto',
-      stats: enemyDef.stats,
-      actions: G.toActions(enemyDef.actions, D),
-    });
-    game.enemy.reward = enemyDef.reward;
-    game.battle = B.createBattle([game.player, game.enemy], { tieFirstSide: D.battle.tieFirstSide });
+    game.units = [game.player].concat(createEnemyUnits(enemyIds));
+    game.battle = B.createBattle(game.units, { tieFirstSide: D.battle.tieFirstSide });
     game.battleToken += 1;
     game.busy = true;
     game.listMode = null;
+    game.targeting = null;
     game.defeatReady = false;
 
     game.screen = 'battle';
     UI.resetBattleView();
-    UI.renderBattleUnits(game.player, game.enemy);
+    UI.setupBattleUnits(game.units);
+    renderUnits();
     UI.setCommandsEnabled(false);
     UI.showScreen('battle');
-    UI.log(game.enemy.name + 'が現れた！');
+    UI.log(enemies().map(function (u) { return u.name; }).join('・') + 'が現れた！');
 
     const token = game.battleToken;
     UI.wait(D.timing.battleStart).then(function () { if (token === game.battleToken) advance(); });
@@ -139,8 +165,8 @@
     }
     const target = game.battle.getUnit(r.targetId);
     UI.log(actor.name + (r.actionType === 'attack' ? 'の攻撃！' : 'の' + r.actionName + '！'));
-    if (r.effective) UI.playHit(target.side);
-    UI.renderBattleUnits(game.player, game.enemy);
+    if (r.effective) UI.playHit(target.id);
+    renderUnits();
     return UI.wait(D.timing.hitAnimation).then(function () {
       if (r.effective) UI.log(target.name + 'に' + r.damage + 'のダメージ！');
       else UI.log('効かなかった！', 'miss');
@@ -150,16 +176,31 @@
     });
   }
 
+  /** 自キャラの手番で入力を受け付けてよいか */
+  function canInput() {
+    return game.screen === 'battle' && !game.busy && game.battle && !game.battle.state.over
+      && game.battle.current() === game.player;
+  }
+
+  /**
+   * 行動を選んだ。相手が1体ならそのまま実行し、複数なら攻撃先を選ぶ。
+   */
+  function chooseAction(action) {
+    if (!canInput() || !action || !B.canUseAction(game.player, action).ok) return;
+    const targets = aliveEnemies();
+    if (targets.length === 1) return playerAct(action, targets[0]);
+    startTargeting(action, targets);
+  }
+
   /** 自キャラの行動 */
-  function playerAct(action) {
-    if (game.screen !== 'battle' || game.busy || !game.battle || game.battle.state.over) return;
-    if (game.battle.current() !== game.player) return;
-    if (!B.canUseAction(game.player, action).ok) return;
+  function playerAct(action, target) {
+    if (!canInput() || !B.canUseAction(game.player, action).ok) return;
 
     game.busy = true; // 次の自分の手番まで入力を受け付けない
     closeList();
+    endTargeting();
     UI.setCommandsEnabled(false);
-    const r = game.battle.act(game.player, action, game.enemy);
+    const r = game.battle.act(game.player, action, target);
     if (!r.ok) { game.busy = false; UI.setCommandsEnabled(true); return; }
 
     const token = game.battleToken;
@@ -177,8 +218,8 @@
     const token = game.battleToken;
 
     if (game.battle.state.winner === 'ally') {
-      UI.vanish('enemy'); // 敵が消える
-      game.lastResult = G.grantReward(ch, game.enemy.reward, D);
+      UI.vanishSide('enemy'); // 敵が消える
+      game.lastResult = G.grantReward(ch, G.sumRewards(game.enemyIds, D), D);
       UI.wait(D.timing.victoryToResult).then(function () { if (token === game.battleToken) goResult(); });
     } else {
       const d = G.applyDefeat(ch, D); // 経験値0・HP/MP全回復（Lv・SP・スキルはそのまま）
@@ -194,12 +235,53 @@
     goBase();
   }
 
+  // ---- 攻撃先の選択 ----
+
+  function startTargeting(action, targets) {
+    closeList();
+    game.targeting = { action: action, ids: targets.map(function (u) { return u.id; }), index: 0, fromList: game.lastListMode };
+    UI.showTargetPrompt(action.name);
+    renderUnits();
+  }
+
+  function endTargeting() {
+    if (!game.targeting) return;
+    game.targeting = null;
+    UI.hideTargetPrompt();
+    renderUnits();
+  }
+
+  /** 攻撃先の選択をやめて、選ぶ前の画面（一覧かコマンド）に戻る */
+  function cancelTargeting() {
+    const from = game.targeting && game.targeting.fromList;
+    endTargeting();
+    if (from) openList(from);
+    else UI.closeActionList();
+  }
+
+  function moveTarget(delta) {
+    const t = game.targeting;
+    t.index = (t.index + delta + t.ids.length) % t.ids.length;
+    renderUnits();
+  }
+
+  function confirmTarget(unitId) {
+    const t = game.targeting;
+    if (!t || game.busy) return;
+    const id = unitId || t.ids[t.index];
+    if (t.ids.indexOf(id) < 0) return;
+    playerAct(t.action, game.battle.getUnit(id));
+  }
+
   // ---- 魔法／スキル一覧 ----
 
+  // 一覧の種類と、そこに並ぶ行動の種類
+  const LIST_TYPES = { magic: ['magic'], skill: ['active'] };
+
   function listItems(mode) {
-    const type = mode === 'magic' ? 'magic' : 'active';
+    const types = LIST_TYPES[mode] || [];
     return game.player.actions
-      .filter(function (a) { return a.type === type; })
+      .filter(function (a) { return types.indexOf(a.type) >= 0; })
       .map(function (a) {
         return { action: a, usable: B.canUseAction(game.player, a).ok, cooldown: B.getCooldown(game.player, a.id) };
       });
@@ -207,7 +289,9 @@
 
   function openList(mode) {
     if (game.busy) return;
+    endTargeting();
     game.listMode = mode;
+    game.lastListMode = mode;
     const items = listItems(mode);
     const firstUsable = items.findIndex(function (it) { return it.usable; });
     game.listIndex = firstUsable >= 0 ? firstUsable : 0;
@@ -233,14 +317,12 @@
 
   function useListItem(index) {
     const it = listItems(game.listMode)[index];
-    if (it && it.usable) playerAct(it.action);
+    if (it && it.usable) chooseAction(it.action);
   }
 
-  /** スキルツリーの各ノードの表示状態（UIに渡す） */
-  function nodeStates() {
-    return D.skillTree.map(function (branch) {
-      return branch.nodes.map(function (node) { return G.getNodeState(game.ch, node.skill, D); });
-    });
+  function chooseAttack() {
+    game.lastListMode = null;
+    chooseAction(B.findAction(game.player, D.normalAttack.id));
   }
 
   // ================= 結果画面 =================
@@ -255,7 +337,7 @@
 
   function nextBattle() {
     if (game.screen !== 'result') return;
-    startBattle(); // HP・MPはそのまま
+    startBattle(game.enemyIds); // 同じ相手ともう一度。HP・MPはそのまま
   }
 
   function backToBaseFromResult() {
@@ -313,7 +395,7 @@
   // ================= 入力 =================
 
   // クリック／タップ
-  $('btn-sortie').addEventListener('click', function () { if (game.screen === 'base') startBattle(); });
+  $('btn-sortie').addEventListener('click', function () { if (game.screen === 'base') startBattle([D.battle.enemyId]); });
   $('btn-book').addEventListener('click', function () { if (game.screen === 'base') goBook(); });
   $('btn-book-back').addEventListener('click', function () { if (game.screen === 'book') goBase(); });
   $('btn-open-tree').addEventListener('click', function () { if (game.screen === 'book') goTree(); });
@@ -323,9 +405,14 @@
     const btn = e.target.closest('[data-cmd]');
     if (!btn || btn.disabled) return;
     const cmd = btn.dataset.cmd;
-    if (cmd === 'attack') playerAct(B.findAction(game.player, D.normalAttack.id));
+    if (cmd === 'attack') chooseAttack();
     else openList(cmd);
   });
+  $('battle-field').addEventListener('click', function (e) {
+    const panel = e.target.closest('.unit-panel.targetable');
+    if (panel) confirmTarget(panel.dataset.unitId);
+  });
+  $('btn-target-back').addEventListener('click', function () { if (!game.busy) cancelTargeting(); });
   $('action-items').addEventListener('click', function (e) {
     const btn = e.target.closest('.action-item');
     if (!btn || btn.disabled) return;
@@ -348,7 +435,7 @@
   // キーボード（PC）
   const keyHandlers = {
     base: function (k) {
-      if (k === 'Enter') { startBattle(); return true; }
+      if (k === 'Enter') { startBattle([D.battle.enemyId]); return true; }
       if (k === 'Escape') { goBook(); return true; }
       return false;
     },
@@ -357,9 +444,19 @@
         if (k === 'Enter') { leaveDefeat(); return true; }
         return false;
       }
-      const handled = ['a', 'w', 's', 'Enter', 'Escape', 'ArrowUp', 'ArrowDown'].indexOf(k) >= 0;
+      const handled = ['a', 'w', 's', 'Enter', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(k) >= 0;
       if (game.busy) return handled; // 入力ロック中はキーを飲み込むだけ
-      if (k === 'a') playerAct(B.findAction(game.player, D.normalAttack.id));
+      if (game.targeting) {
+        if (k === 'Escape') cancelTargeting();
+        else if (k === 'ArrowLeft' || k === 'ArrowUp') moveTarget(-1);
+        else if (k === 'ArrowRight' || k === 'ArrowDown') moveTarget(1);
+        else if (k === 'Enter') confirmTarget();
+        else if (k === 'a') chooseAttack();
+        else if (k === 'w') openList('magic');
+        else if (k === 's') openList('skill');
+        return handled;
+      }
+      if (k === 'a') chooseAttack();
       else if (k === 'w') openList('magic');
       else if (k === 's') openList('skill');
       else if (game.listMode) {

@@ -127,6 +127,8 @@ html, body {
   gap: 10px;
 }
 
+.unit-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+
 .unit-panel {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -160,6 +162,19 @@ html, body {
 .unit-panel.hit { animation: shake 0.35s ease, flash 0.35s ease; }
 .unit-panel.vanish { opacity: 0; transform: scale(0.9); }
 .unit-panel.down { opacity: 0.4; }
+
+/* 攻撃先を選ぶとき */
+.unit-panel.targetable { cursor: pointer; border-color: var(--danger); }
+.unit-panel.targetable.selected { outline: 3px solid var(--selected); outline-offset: 1px; }
+.target-prompt {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.target-title { font-weight: 700; font-size: 14px; padding: 2px 4px; }
 
 .battle-log {
   flex: 1 1 auto;

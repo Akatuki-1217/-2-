@@ -53,24 +53,51 @@
   }
 
   // ---- 戦闘 ----
-  function renderUnitPanel(el, unit) {
-    let html = '<div class="unit-name">' + esc(unit.name) + '</div>' + bar('hp', 'HP', unit.hp, unit.stats.hp);
-    if (unit.stats.mp > 0) html += bar('mp', 'MP', unit.mp, unit.stats.mp); // 最大MPが0ならMPバーは出さない
-    el.innerHTML = html;
-    el.classList.toggle('down', unit.hp <= 0 && !el.classList.contains('vanish'));
+  // ユニットの配列から描画する。パネルは戦闘開始時に1回だけ作り、以後は中身だけ書き換える
+  // （揺れ・消えるアニメーションのクラスを保つため）。
+
+  function panelOf(unitId) {
+    return document.querySelector('#battle-field .unit-panel[data-unit-id="' + unitId + '"]');
   }
 
-  function renderBattleUnits(player, enemy) {
-    renderUnitPanel($('player-panel'), player);
-    renderUnitPanel($('enemy-panel'), enemy);
+  function setupBattleUnits(units) {
+    const rows = { enemy: $('enemy-row'), ally: $('ally-row') };
+    rows.enemy.innerHTML = '';
+    rows.ally.innerHTML = '';
+    units.forEach(function (u) {
+      const el = document.createElement('div');
+      el.className = 'unit-panel ' + u.side;
+      el.dataset.unitId = u.id;
+      rows[u.side === 'enemy' ? 'enemy' : 'ally'].appendChild(el);
+    });
+  }
+
+  /**
+   * opts.targets: 攻撃先として選べるユニットIDの配列（選ばないときは省略）
+   * opts.selectedId: いま選んでいる攻撃先
+   */
+  function renderBattleUnits(units, opts) {
+    opts = opts || {};
+    const targets = opts.targets || [];
+    units.forEach(function (unit) {
+      const el = panelOf(unit.id);
+      if (!el) return;
+      let html = '<div class="unit-name">' + esc(unit.name) + '</div>' + bar('hp', 'HP', unit.hp, unit.stats.hp);
+      if (unit.stats.mp > 0) html += bar('mp', 'MP', unit.mp, unit.stats.mp); // 最大MPが0ならMPバーは出さない
+      el.innerHTML = html;
+      el.classList.toggle('down', unit.hp <= 0 && !el.classList.contains('vanish'));
+      el.classList.toggle('targetable', targets.indexOf(unit.id) >= 0);
+      el.classList.toggle('selected', targets.indexOf(unit.id) >= 0 && unit.id === opts.selectedId);
+    });
   }
 
   function resetBattleView() {
     $('battle-log').innerHTML = '';
-    $('enemy-panel').className = 'unit-panel enemy';
-    $('player-panel').className = 'unit-panel ally';
+    $('enemy-row').innerHTML = '';
+    $('ally-row').innerHTML = '';
     $('defeat-overlay').classList.add('hidden');
     $('action-list').classList.add('hidden');
+    $('target-prompt').classList.add('hidden');
     $('commands').classList.remove('hidden');
     $('turn-label').textContent = '';
   }
@@ -89,19 +116,21 @@
     el.scrollTop = el.scrollHeight;
   }
 
-  function playHit(side) {
-    const el = $(side === 'enemy' ? 'enemy-panel' : 'player-panel');
+  function playHit(unitId) {
+    const el = panelOf(unitId);
+    if (!el) return;
     el.classList.remove('hit');
     void el.offsetWidth; // アニメーションを最初から再生
     el.classList.add('hit');
   }
 
-  function vanish(side) {
-    $(side === 'enemy' ? 'enemy-panel' : 'player-panel').classList.add('vanish');
+  /** その陣営のパネルを消す（勝利時に敵が消える演出） */
+  function vanishSide(side) {
+    document.querySelectorAll('#battle-field .unit-panel.' + side).forEach(function (el) { el.classList.add('vanish'); });
   }
 
   function setCommandsEnabled(enabled) {
-    document.querySelectorAll('#commands .btn-cmd, #action-items .action-item, #btn-list-back').forEach(function (b) {
+    document.querySelectorAll('#commands .btn-cmd, #action-items .action-item, #btn-list-back, #btn-target-back').forEach(function (b) {
       if (!enabled) b.disabled = true;
       else if (!b.dataset.unusable) b.disabled = false;
     });
@@ -140,6 +169,18 @@
   function closeActionList() {
     $('action-list').classList.add('hidden');
     $('commands').classList.remove('hidden');
+  }
+
+  /** 攻撃先を選ぶ案内を出す（一覧・コマンドは隠す） */
+  function showTargetPrompt(actionName) {
+    $('target-title').textContent = actionName + '：相手を選んでください';
+    $('commands').classList.add('hidden');
+    $('action-list').classList.add('hidden');
+    $('target-prompt').classList.remove('hidden');
+  }
+
+  function hideTargetPrompt() {
+    $('target-prompt').classList.add('hidden');
   }
 
   function showDefeat(lostExp) {
@@ -254,15 +295,18 @@
     showScreen: showScreen,
     toast: toast,
     renderBase: renderBase,
+    setupBattleUnits: setupBattleUnits,
     renderBattleUnits: renderBattleUnits,
     resetBattleView: resetBattleView,
     setTurn: setTurn,
     log: log,
     playHit: playHit,
-    vanish: vanish,
+    vanishSide: vanishSide,
     setCommandsEnabled: setCommandsEnabled,
     renderActionList: renderActionList,
     closeActionList: closeActionList,
+    showTargetPrompt: showTargetPrompt,
+    hideTargetPrompt: hideTargetPrompt,
     showDefeat: showDefeat,
     renderResult: renderResult,
     setSelectedButton: setSelectedButton,

@@ -30,9 +30,9 @@
         <h1>戦闘</h1>
         <span class="turn-label" id="turn-label"></span>
       </header>
-      <div class="battle-field">
-        <div class="unit-panel enemy" id="enemy-panel"></div>
-        <div class="unit-panel ally" id="player-panel"></div>
+      <div class="battle-field" id="battle-field">
+        <div class="unit-row enemies" id="enemy-row"></div>
+        <div class="unit-row allies" id="ally-row"></div>
       </div>
       <div class="battle-log" id="battle-log" aria-live="polite"></div>
       <div class="command-area">
@@ -40,6 +40,10 @@
           <div class="action-list-title" id="action-list-title"></div>
           <ul class="action-items" id="action-items"></ul>
           <button type="button" class="btn" id="btn-list-back">戻る <span class="key">[Esc]</span></button>
+        </div>
+        <div class="target-prompt hidden" id="target-prompt">
+          <div class="target-title" id="target-title"></div>
+          <button type="button" class="btn" id="btn-target-back">戻る <span class="key">[Esc]</span></button>
         </div>
         <div class="commands" id="commands">
           <button type="button" class="btn btn-cmd" data-cmd="attack">攻撃 <span class="key">[A]</span></button>

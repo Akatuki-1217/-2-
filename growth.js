@@ -180,6 +180,14 @@
     return r;
   }
 
+  /** 敵IDの配列から、勝ったときの報酬の合計を求める */
+  function sumRewards(enemyIds, data) {
+    return enemyIds.reduce(function (sum, id) {
+      const r = (data.enemies[id] && data.enemies[id].reward) || {};
+      return { exp: sum.exp + (r.exp || 0), sp: sum.sp + (r.sp || 0) };
+    }, { exp: 0, sp: 0 });
+  }
+
   /** 敗北時：今のLvでためた経験値を0にし、HP・MPを全回復。Lv・SP・スキルは失わない */
   function applyDefeat(ch, data) {
     const lostExp = ch.exp;
@@ -304,6 +312,7 @@
     applyStatGains: applyStatGains,
     addExp: addExp,
     grantReward: grantReward,
+    sumRewards: sumRewards,
     applyDefeat: applyDefeat,
     findNode: findNode,
     checkAcquire: checkAcquire,
